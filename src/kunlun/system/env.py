@@ -4,8 +4,9 @@
 支持获取 Python 解释器路径、当前模块包名、调用者模块名等运行时信息，
 常用于日志标记、包管理和环境适配场景。
 
-注意：环境变量的读写与 PATH 管理能力已迁移至 :mod:`baibao.system.env_var`，
-本模块仅保留平台信息、Python 解释器信息与模块/包信息查询能力。
+注意：环境变量的读写与 PATH 管理能力由 :mod:`kunlun.system.env_var`（抽象接口）
+提供，平台具体实现由上层包注册，本模块仅保留平台信息、
+Python 解释器信息与模块/包信息查询能力。
 """
 
 import inspect
@@ -255,7 +256,7 @@ def get_own_top_package_name() -> str:
     用于 ``python -m kunlun`` 等场景下识别自身包名，供版本查询、日志标记、
     配置目录等模块统一引用，避免在代码中硬编码 ``"kunlun"``。
 
-    注意：返回的是 kunlun 自身的包名。上层库（如 baibao）若需要自身的包名，
+    注意：返回的是 kunlun 自身的包名。上层库若需要自身的包名，
     请直接使用字面量或自行维护，不要调用本函数。
 
     Returns:
@@ -282,7 +283,7 @@ def get_caller_top_package_name(skip_packages: Optional[List[str]] = None) -> st
 
     Args:
         skip_packages: 需视为"库内部"而一并跳过的额外顶级包名列表。
-            传入完整包名（如 ``"baibao"``）或带点的包名（如 ``"baibao.base"``）
+            传入完整包名（如 ``"mylib"``）或带点的包名（如 ``"mylib.core"``）
             均可，内部统一取顶级包名比较。
 
     Returns:
@@ -291,15 +292,15 @@ def get_caller_top_package_name(skip_packages: Optional[List[str]] = None) -> st
     Examples:
         >>> # kunlun 内部直接调用
         >>> get_caller_top_package_name()
-        >>> # baibao 调用，需穿透 baibao 找到其上层应用
-        >>> get_caller_top_package_name(["baibao"])
+        >>> # 上层库调用，需穿透该库找到其上层应用
+        >>> get_caller_top_package_name(["mylib"])
     """
     # 跳过集合：默认含本库（kunlun）自身，合并调用方传入的额外库包名
     skip = {_PACKAGE_NAME}
     if skip_packages:
         skip.update(str(p).split('.')[0] for p in skip_packages)
     # 记录遍历中最近遇到的"库"包名（非本库），作为找不到外部调用方时的回退值。
-    # 例如 baibao 调用本函数且整条栈都在 baibao/kunlun 内时，回退到 "baibao"。
+    # 例如某上层库调用本函数且整条栈都在该库/kunlun 内时，回退到该库包名。
     fallback = _PACKAGE_NAME
     # 从当前帧的上一帧（调用方）开始向上遍历；用 f_back 链避免 inspect.stack
     # 抓取每帧源码上下文的开销，也避免持有整个栈的帧引用
@@ -309,7 +310,7 @@ def get_caller_top_package_name(skip_packages: Optional[List[str]] = None) -> st
         pkg = frame.f_globals.get('__package__')
         if pkg:
             top = pkg.split('.')[0]
-            # 严格按顶级包名比较，避免前缀误判（如 baibao_ext / baibao2）
+            # 严格按顶级包名比较，避免前缀误判（如 mylib_ext / mylib2）
             if top not in skip:
                 return str(top)
             if top != _PACKAGE_NAME:
