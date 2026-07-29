@@ -18,6 +18,11 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# 包含 PEP 561 类型标记 py.typed，使下游（如 baibao）能对本包做类型检查；
+# 详见 src/kunlun/py.typed 的注释。
+[tool.setuptools.package-data]
+kunlun = ["py.typed"]
+
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]
 
