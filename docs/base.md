@@ -10,6 +10,8 @@
 - [log - 日志模块](#4-log---日志模块)
 - [time - 时间模块](#5-time---时间模块)
 - [action - 动作模块](#6-action---动作模块)
+- [cli - 命令模块](#7-cli---命令模块)
+- [file - 文件操作模块](#8-file---文件操作模块)
 
 ---
 
@@ -432,6 +434,203 @@ count = action.clear("gre*")
 # 清空全部动作
 total = action.clear()
 ```
+
+---
+
+## 7. cli - 命令模块
+
+提供可扩展的命令系统，支持命令注册、查找、执行和帮助信息生成。
+
+### 7.1 核心组件
+
+| 组件 | 说明 |
+|------|------|
+| `Command` | 命令抽象基类，所有命令需继承此类 |
+| `HelpCommand` | 帮助命令默认实现 |
+| `CommandManager` | 命令注册、查找和执行管理器 |
+| `CommandNotFoundError` | 命令未找到异常 |
+
+### 7.2 定义自定义命令
+
+```python
+from kunlun.base.cli import Command, CommandManager
+
+class GreetCommand(Command):
+    @property
+    def name(self) -> str:
+        return "--greet"
+
+    @property
+    def abbr(self) -> str:
+        return "-g"
+
+    @property
+    def description(self) -> str:
+        return "打招呼"
+
+    @property
+    def usage(self) -> str:
+        return "--greet [名字]"
+
+    def execute(self, args: list[str]) -> str:
+        name = args[0] if args else "World"
+        return f"Hello, {name}!"
+
+# 注册命令
+manager = CommandManager()
+manager.register(GreetCommand())
+```
+
+### 7.3 执行命令
+
+```python
+from kunlun.base.cli import CommandManager, CommandNotFoundError
+
+manager = CommandManager()
+# ... 注册命令 ...
+
+# 通过名称执行
+result = manager.execute_command("--greet", ["Alice"])
+
+# 通过缩写执行
+result = manager.execute_command("-g", ["Bob"])
+
+# 命令不存在时抛出 CommandNotFoundError
+try:
+    manager.execute_command("--unknown", [])
+except CommandNotFoundError as e:
+    print(e)  # "未知命令: --unknown"
+```
+
+### 7.4 查询命令
+
+```python
+# 获取单个命令
+cmd = manager.get_command("--greet")
+
+# 获取所有命令（包括帮助命令）
+all_cmds = manager.get_all_commands()
+
+# 获取帮助命令实例
+help_cmd = manager.get_help_command()
+```
+
+### 7.5 管理命令
+
+```python
+# 取消注册命令
+manager.unregister("--greet")
+
+# 清空所有命令
+manager.clear()
+
+# 设置自定义帮助命令
+manager.set_help_command(MyHelpCommand(manager))
+```
+
+### 7.6 帮助命令
+
+`CommandManager` 自动内置 `help` / `h` 命令。
+
+```python
+# 查看所有命令
+manager.execute_command("help", [])
+
+# 查看单个命令的帮助
+manager.execute_command("help", ["--greet"])
+```
+
+### 7.7 命令行入口
+
+`CommandManager.main_cli` 解析 `sys.argv` 并执行对应命令，支持启动/关闭回调。
+
+```python
+from kunlun.base.cli import CommandManager
+
+manager = CommandManager()
+# ... 注册命令 ...
+
+# on_startup 在命令执行前调用（可抛异常中断）；on_shutdown 在 finally 中调用（不可抛异常）
+manager.main_cli(on_startup=None, on_shutdown=None)
+```
+
+---
+
+## 8. file - 文件操作模块
+
+提供目录清理、路径转换和文件读取三类能力。
+
+### 8.1 API 一览
+
+| 方法 / 常量 | 说明 |
+|------|------|
+| `RESOLVE_TYPE_CURRENT` (1) | 解析类型：当前工作目录 |
+| `RESOLVE_TYPE_USER` (2) | 解析类型：用户主目录 |
+| `RESOLVE_TYPE_APP_DATA` (3) | 解析类型：应用数据目录 |
+| `remove_target_dirs(base_dir, name, recursive=False)` | 删除匹配名称的目录，返回删除数量 |
+| `remove_suffix_dirs(base_dir, suffix, recursive=False)` | 删除匹配后缀的目录，返回删除数量 |
+| `resolve_path(relative_path, resolve_type=1, app_name=None)` | 相对路径按解析类型转换为绝对路径 |
+| `read_file_stream(file_path)` | 读取文件返回二进制流（调用方负责关闭） |
+| `read_file_text(file_path, encoding='utf-8')` | 读取文件返回字符串 |
+
+### 8.2 清理构建产物
+
+按目录名或后缀删除目录，可选递归。常用于清理 `__pycache__`、`build`、`*.egg-info`。
+
+```python
+from kunlun.base.file import remove_target_dirs, remove_suffix_dirs
+
+# 删除顶层的 build 目录
+remove_target_dirs("/path/to/project", "build")
+
+# 递归删除所有 __pycache__ 目录
+remove_target_dirs("/path/to/project", "__pycache__", recursive=True)
+
+# 删除顶层的 .egg-info 目录
+remove_suffix_dirs("/path/to/project", ".egg-info")
+```
+
+> 目录不存在抛出 `FileNotFoundError`；权限不足仅告警不抛出。
+
+### 8.3 路径转换
+
+将相对路径按解析类型拼接到对应基准目录，返回规范化的绝对路径（仅转换，不校验存在性）。
+
+```python
+from kunlun.base.file import resolve_path, RESOLVE_TYPE_USER, RESOLVE_TYPE_APP_DATA
+
+# 相对当前工作目录（默认）
+resolve_path("config.ini")
+# 'C:\\Proj\\config.ini'
+
+# 相对用户主目录
+resolve_path("aa/test.cfg", RESOLVE_TYPE_USER)
+# '/home/user/aa/test.cfg'
+
+# 相对应用数据目录（跨平台），app_name 缺省时自动取调用者顶级包名
+resolve_path("config.ini", RESOLVE_TYPE_APP_DATA, app_name="myapp")
+# 'C:\\Users\\xxx\\AppData\\Roaming\\myapp\\config.ini'
+```
+
+> 传入绝对路径或 `resolve_type` 非法时抛出 `ValueError`。
+
+### 8.4 读取文件
+
+自动判断绝对/相对路径（相对路径基于当前工作目录解析）。
+
+```python
+from kunlun.base.file import read_file_stream, read_file_text
+
+# 读取为字符串（自动关闭句柄）
+content = read_file_text("config.ini")
+content = read_file_text("/etc/hosts", encoding="utf-8")
+
+# 读取为字节流（调用方负责关闭，推荐配合 with）
+with read_file_stream("config.ini") as f:
+    data = f.read()
+```
+
+> 文件不存在抛出 `FileNotFoundError`；解码失败抛出 `UnicodeDecodeError`。
 
 ---
 
