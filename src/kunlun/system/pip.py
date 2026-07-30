@@ -9,7 +9,7 @@ pip 工具，支持多镜像站点自动切换。
 import subprocess
 from typing import List, Optional, Tuple, Union
 
-from . import env
+from kunlun.envinfo import pyinfo
 
 # 默认镜像站点列表，按优先级从高到低
 DEFAULT_MIRRORS: List[str] = [
@@ -20,7 +20,7 @@ DEFAULT_MIRRORS: List[str] = [
 ]
 
 # Python 命令，默认使用当前正在运行的 Python 解释器
-_PYTHON_COMMAND: str = env.get_python_executable()
+_PYTHON_COMMAND: str = pyinfo.get_python_executable()
 
 
 def get_python_command() -> str:

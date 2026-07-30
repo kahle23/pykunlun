@@ -9,8 +9,7 @@ import threading
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional
 
-from kunlun.base import log
-from kunlun.system import env
+from kunlun.envinfo import pkginfo
 
 
 class Command(ABC):
@@ -71,7 +70,7 @@ class Command(ABC):
         """
         显示命令用法。
         """
-        log.usage(f"用法: {self.usage}")
+        print(f"用法: {self.usage}")
 
 
 class HelpCommand(Command):
@@ -393,7 +392,7 @@ class CommandManager:
                 help_command = self.get_help_command()
                 help_name = help_command.name if help_command else "help"
                 print(str(e))
-                print(f"使用 'python -m {env.get_caller_top_package_name()} {help_name}' 查看可用命令")
+                print(f"使用 'python -m {pkginfo.get_caller_top_package_name()} {help_name}' 查看可用命令")
                 sys.exit(1)
         finally:
             # 执行关闭回调（为空时跳过）；注意：回调内部不能抛出异常

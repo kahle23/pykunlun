@@ -43,7 +43,7 @@ def check_dataclass_required_fields(data: Dict[str, Any], data_class: Type[T],
         raise ValueError(f"{data_class.__name__} 缺少字段: {', '.join(sorted(missing))}")
 
 
-def check_required_fields_not_empty(obj: Any, required_fields: Sequence[str], 
+def check_required_fields_not_empty(obj: Any, required_fields: Sequence[str],
     context: Optional[str] = None
 ) -> None:
     """

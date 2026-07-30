@@ -11,8 +11,10 @@ import os
 import shutil
 from typing import IO, Optional
 
-from kunlun.base import log
-from kunlun.system import env
+from kunlun.envinfo import osenv, pkginfo
+from kunlun.util import logutil
+
+log = logutil.getLogger(__name__)
 
 # 解析类型常量，供 resolve_path 的 resolve_type 参数使用
 RESOLVE_TYPE_CURRENT = 1   # 当前工作目录
@@ -145,7 +147,7 @@ def resolve_path(relative_path: str, resolve_type: int = RESOLVE_TYPE_CURRENT,
     三种解析类型对应的基准目录：
     - RESOLVE_TYPE_CURRENT  (1)：当前工作目录（``os.getcwd()``）
     - RESOLVE_TYPE_USER     (2)：用户主目录（``~``），如 ``aa/test.cfg`` → ``/home/user/aa/test.cfg``
-    - RESOLVE_TYPE_APP_DATA (3)：应用数据目录（跨平台，见 ``env.get_app_home``）：
+    - RESOLVE_TYPE_APP_DATA (3)：应用数据目录（跨平台，见 :func:`kunlun.envinfo.osenv.get_app_home`）：
         - Windows：``%APPDATA%/<app_name>``
         - macOS：``~/Library/Application Support/<app_name>``
         - Linux：``$XDG_CONFIG_HOME/<app_name>`` 或 ``~/.config/<app_name>``
@@ -155,7 +157,7 @@ def resolve_path(relative_path: str, resolve_type: int = RESOLVE_TYPE_CURRENT,
         resolve_type: 解析类型，取值为 RESOLVE_TYPE_CURRENT / RESOLVE_TYPE_USER / RESOLVE_TYPE_APP_DATA，
             默认为 RESOLVE_TYPE_CURRENT。
         app_name: 应用名，仅 resolve_type=RESOLVE_TYPE_APP_DATA 时使用，决定应用数据目录下的子目录名。
-            默认为 None，此时自动取调用者顶级包名（``env.get_caller_top_package_name()``）。
+            默认为 None，此时自动取调用者顶级包名（:func:`kunlun.envinfo.pkginfo.get_caller_top_package_name`）。
 
     Returns:
         规范化后的绝对路径字符串。
@@ -176,10 +178,10 @@ def resolve_path(relative_path: str, resolve_type: int = RESOLVE_TYPE_CURRENT,
     if resolve_type == RESOLVE_TYPE_CURRENT:
         base_dir = os.getcwd()
     elif resolve_type == RESOLVE_TYPE_USER:
-        base_dir = env.get_user_home()
+        base_dir = osenv.get_user_home()
     elif resolve_type == RESOLVE_TYPE_APP_DATA:
-        app = app_name if app_name else env.get_caller_top_package_name()
-        base_dir = env.get_app_home(app)
+        app = app_name if app_name else pkginfo.get_caller_top_package_name()
+        base_dir = osenv.get_app_home(app)
     else:
         raise ValueError(f"不支持的解析类型: {resolve_type}，可选值: "
                          f"{RESOLVE_TYPE_CURRENT}(当前目录)/"
