@@ -33,8 +33,14 @@ warn_unused_configs = true
 
 [tool.ruff]
 target-version = "py38"
+# 行宽策略：期望 100，硬上限 120（E501 据此报错）。
+# 多出的 20 为预留冗余，给中文 docstring、长标识符、不可拆分的 URL 留缓冲，
+# 避免为凑 100 而生硬折行；新代码仍以 100 为目标，100–120 之间可容忍。
+line-length = 120
 
 [tool.ruff.lint]
+# 默认 select（E4/E7/E9/F）不含 E501，显式开启行长检查；阈值见 [tool.ruff] line-length。
+extend-select = ["E501"]
 ignore = [
     "S110",    # try-except-pass：资源清理场景，静默是预期行为
     "BLE001",  # 盲异常：与 S110 重叠的工具库资源清理场景

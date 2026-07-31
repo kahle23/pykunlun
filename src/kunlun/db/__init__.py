@@ -10,12 +10,12 @@
 后续可扩展 KV、向量库等。
 """
 
-from .rdb import RdbCfg, RdbManager, RdbClient
-from .rdb_builtin import SqliteRdbClient
+from .rdb import RdbCfg, RdbClient, RdbManager
+from .rdb_builtin import SqliteClient
 
 __all__ = [
     'RdbCfg',
-    'RdbManager',
     'RdbClient',
-    'SqliteRdbClient',
+    'RdbManager',
+    'SqliteClient',
 ]

@@ -13,10 +13,10 @@ from .core import (
     action,
     cli,
 )
+from .db import RdbCfg, RdbClient, RdbManager
 from .envinfo import pkginfo
 from .system import EnvVarManager, EnvVarService, env_var, pip
 from .util import fileutil, loadutil, logutil, modutil, objutil, timeutil, validation
-from .db import RdbCfg, RdbManager, RdbClient
 
 # 不捕获 PackageNotFoundError：能执行到此处说明包已加载，版本缺失应报错而非静默回退
 __version__ = pkginfo.get_package_version(pkginfo.get_own_top_package_name())
@@ -25,12 +25,12 @@ __all__ = [
     'Command',
     'CommandManager',
     'CommandNotFoundError',
-    'RdbCfg',
     'EnvVarManager',
     'EnvVarService',
     'HelpCommand',
-    'RdbManager',
+    'RdbCfg',
     'RdbClient',
+    'RdbManager',
     'action',
     'cli',
     'env_var',

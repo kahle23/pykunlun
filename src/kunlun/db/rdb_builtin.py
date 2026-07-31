@@ -4,7 +4,7 @@
 随 :class:`~kunlun.db.rdb.RdbManager`
 实例化自动注册，开箱即用。当前包含：
 
-  - :class:`SqliteRdbClient`：SQLite 驱动客户端（基于 ``sqlite3``）
+  - :class:`SqliteClient`：SQLite 驱动客户端（基于 ``sqlite3``）
 """
 
 import gzip
@@ -12,7 +12,7 @@ import os
 import sqlite3
 from typing import List, Optional
 
-from kunlun import logutil
+from kunlun.util import logutil
 
 from .rdb import RdbCfg, RdbClient
 
@@ -21,13 +21,15 @@ log = logutil.getLogger(__name__)
 
 # region ======== SQLite 驱动客户端 ========
 
-class SqliteRdbClient(RdbClient):
+class SqliteClient(RdbClient):
     """
     SQLite 驱动客户端。
 
     SQLite 为文件型数据库，仅需 :attr:`RdbCfg.database` 指定文件路径
     （``':memory:'`` 表示内存库），无需 host/port/username/password。
     """
+
+    db_type = 'sqlite'
 
     def get_driver(self):
         """
@@ -44,17 +46,18 @@ class SqliteRdbClient(RdbClient):
         """
         return {'database': self.cfg.database}
 
-    def validate_cfg(self) -> None:
+    def _validate_and_prepare_cfg(self) -> None:
         """
         SQLite 仅需 database 字段（文件路径或 ``':memory:'``）。
 
-        覆盖基类默认实现（网络库字段校验），仅校验 database 与 db_type。
+        覆盖基类默认实现（网络库字段校验），仅校验 database；
+        db_type 的一致性已由 :meth:`RdbClient.__init__` 保证。
 
         Raises:
             ValueError: database 为空时抛出。
         """
-        from kunlun import validation
-        validation.check_required_fields_not_empty(self.cfg, ['database', 'db_type'], '数据库配置')
+        from kunlun.util import validation
+        validation.check_required_fields_not_empty(self.cfg, ['database'], '数据库配置')
 
     def is_connection_open(self, connection) -> bool:
         """
