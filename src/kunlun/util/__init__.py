@@ -5,12 +5,25 @@
 模块导入与数据加载等无状态纯函数工具，按子模块组织。
 """
 
-from . import fileutil, loadutil, logutil, modutil, objutil, timeutil, validation
+from . import (
+    fileutil,
+    loadutil,
+    logutil,
+    maskutil,
+    modutil,
+    objutil,
+    timeutil,
+    validation,
+)
+from .maskutil import CommandPasswordMasker, EnvMasker
 
 __all__ = [
+    'CommandPasswordMasker',
+    'EnvMasker',
     'fileutil',
     'loadutil',
     'logutil',
+    'maskutil',
     'modutil',
     'objutil',
     'timeutil',
