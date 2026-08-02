@@ -10,6 +10,7 @@
 import gzip
 import os
 import sqlite3
+import urllib.request
 from typing import List, Optional
 
 from kunlun.util import logutil
@@ -41,10 +42,25 @@ class SqliteClient(RdbClient):
         """
         构建 sqlite3 连接参数（基于绑定的 :attr:`cfg`）。
 
+        - 默认（``read_only=False``）：直接传 ``database`` 文件路径。
+        - ``read_only=True``：用 URI ``file:<abs path>?mode=ro`` 打开，
+          适用于查询其他进程正在写入的 SQLite 库（如 opencode 的会话库）——
+          只读连接绝不参与写事务、不会锁库；连接不存在的库会失败而非创建。
+          ``:memory:`` 内存库忽略此选项（内存库不支持只读，仍用普通连接）。
+
+        路径处理：先转绝对路径，再用 :func:`urllib.request.pathname2url`
+        转成合法的 ``file:`` URI 段（处理空格、中文、Windows 反斜杠与盘符）。
+
         Returns:
-            包含 ``database`` 的连接参数字典。
+            连接参数字典：普通连接为 ``{'database': path}``；
+            只读连接为 ``{'database': 'file:<path>?mode=ro', 'uri': True}``。
         """
-        return {'database': self.cfg.database}
+        db = self.cfg.database
+        if self.cfg.read_only and db != ':memory:':
+            abs_path = os.path.abspath(db)
+            uri = 'file:' + urllib.request.pathname2url(abs_path) + '?mode=ro'
+            return {'database': uri, 'uri': True}
+        return {'database': db}
 
     def _validate_and_prepare_cfg(self) -> None:
         """
