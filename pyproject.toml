@@ -1,14 +1,14 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kunlun"
-version = "0.0.1"
+name = "pykunlun"
+version = "0.0.2"
 description = "Kunlun，与具体业务无关的 Python 底层能力库。承载跨平台、跨业务的通用抽象与基础设施，不依赖上层应用包。"
 readme = "README.md"
-license = {text = "GPL-3.0-or-later"}
-requires-python = ">=3.8"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.10"
 authors = [
     {name = "Kahle"}
 ]
@@ -19,20 +19,20 @@ dependencies = [
 where = ["src"]
 
 # 包含 PEP 561 类型标记 py.typed，使下游（如 baibao）能对本包做类型检查；
-# 详见 src/kunlun/py.typed 的注释。
+# 详见 src/pykunlun/py.typed 的注释。
 [tool.setuptools.package-data]
-kunlun = ["py.typed"]
+pykunlun = ["py.typed"]
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 
 [tool.ruff]
-target-version = "py38"
+target-version = "py310"
 # 行宽策略：期望 100，硬上限 120（E501 据此报错）。
 # 多出的 20 为预留冗余，给中文 docstring、长标识符、不可拆分的 URL 留缓冲，
 # 避免为凑 100 而生硬折行；新代码仍以 100 为目标，100–120 之间可容忍。
@@ -46,15 +46,6 @@ ignore = [
     "BLE001",  # 盲异常：与 S110 重叠的工具库资源清理场景
     "DTZ005",  # datetime.now() 无 tz：工具库默认使用 naive datetime
     "DTZ007",  # strptime 无 %z：同上
-    # 以下规则要求改用 PEP 585/604 现代类型注解（dict[] / X | None），
-    # 这在运行时需 Python 3.9+，或必须配合 `from __future__ import annotations`
-    # 才能兼容 py38。本项目选择保持 typing.Dict/Optional/Union 原样风格，
-    # 不做类型注解现代化转换，以贴近 typing 模块的传统写法、降低阅读门槛。
-    "FA100",   # 建议加 future import 以简化 typing.Dict 等注解
-    "FA102",   # 要求加 future import（PEP 585 内置泛型）
-    "UP006",   # non-pep585-annotation：Dict/List/Tuple → dict/list/tuple
-    "UP007",   # non-pep604-annotation-union：Union[X, Y] → X | Y
-    "UP045",   # non-pep604-annotation-optional：Optional[X] → X | None
     # PIE790：不必要的 pass 语句
     # 抽象方法、空实现方法、异常子类等场景显式保留 pass，更直观表达
     # "此处为空占位/待子类实现" 的意图，与 docstring 配合可读性更好。

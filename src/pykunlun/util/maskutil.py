@@ -1,7 +1,7 @@
 """
 脱敏门面模块：默认管理器 + 命令行/环境变量脱敏策略与统一门面。
 
-调用方只需 ``from kunlun.util import maskutil``，一切脱敏统一走 :func:`mask` 自动探测：
+调用方只需 ``from pykunlun.util import maskutil``，一切脱敏统一走 :func:`mask` 自动探测：
 
   - **字符串值**：``mask('13812345678')`` → ``'138****5678'``；
   - **命令**（``List[str]``）：``mask(['mysqldump', '-psecret'])`` → ``['mysqldump', '-p***']``；
@@ -17,24 +17,25 @@
     追加敏感环境变量键名。
 
 抽象定义与内置数据策略（``Masker`` / ``MaskManager`` / ``PhoneMasker`` 等）见
-:mod:`kunlun.data.mask`；命令行/环境变量脱敏策略（:class:`CommandPasswordMasker` /
+:mod:`pykunlun.data.mask`；命令行/环境变量脱敏策略（:class:`CommandPasswordMasker` /
 :class:`EnvMasker`）定义在本模块并注册到默认 :data:`mask_manager`。:func:`mask` 等门面
 函数均转发到 :data:`mask_manager`。
 """
 
 import os
-from typing import Any, Dict, FrozenSet, Iterable, List, Optional
+from collections.abc import Iterable
+from typing import Any
 
-from kunlun.data.mask import Masker, MaskManager
+from pykunlun.data.mask import Masker, MaskManager
 
 # region ======== 命令行密码脱敏策略 ========
 
-class CommandPasswordMasker(Masker[List[str]]):
+class CommandPasswordMasker(Masker[list[str]]):
     """
     命令行密码脱敏策略（``Masker[List[str]]``）。
 
     把一条命令（参数列表）中携带密码的参数屏蔽为占位符（占位符 = 实例
-    :attr:`~kunlun.data.mask.Masker.mask_placeholder` 重复 3 次，默认 ``'***'``）：
+    :attr:`~pykunlun.data.mask.Masker.mask_placeholder` 重复 3 次，默认 ``'***'``）：
 
       - ``--password=SECRET``（GNU 长形式，跨工具通用）**始终**屏蔽；
       - 紧凑短形式（如 mysqldump 的 ``-pSECRET``）按命令首段识别的工具名，命中本实例
@@ -49,7 +50,7 @@ class CommandPasswordMasker(Masker[List[str]]):
     """
 
     def __init__(self, name: str = 'cmd_password', priority: int = 300,
-                 mask_placeholder: Optional[str] = None) -> None:
+                 mask_placeholder: str | None = None) -> None:
         """
         Args:
             name: 策略名，默认 ``'cmd_password'``。
@@ -61,7 +62,7 @@ class CommandPasswordMasker(Masker[List[str]]):
         # 内置的"用紧凑短形式传密码"的工具名（规范化后）→ 标志前缀集合。
         # 仅登记确认用紧凑短形式传密码的工具；pg 家族（``-p`` 为端口）不登记。
         # 可通过 :meth:`register_flag` 扩展。
-        self._tool_flags: Dict[str, FrozenSet[str]] = {
+        self._tool_flags: dict[str, frozenset[str]] = {
             'mysqldump': frozenset({'-p'}),
             'mysql': frozenset({'-p'}),
             'mariadb-dump': frozenset({'-p'}),
@@ -69,7 +70,7 @@ class CommandPasswordMasker(Masker[List[str]]):
         }
         # ``--password=`` 长形式密码参数前缀集合（跨工具通用，命中即始终屏蔽）。
         # 可通过 :meth:`register_password_prefix` 扩展。
-        self._password_long_prefixes: List[str] = ['--password=']
+        self._password_long_prefixes: list[str] = ['--password=']
 
     def _normalize_tool_name(self, cmd0: str) -> str:
         """
@@ -111,7 +112,7 @@ class CommandPasswordMasker(Masker[List[str]]):
         """
         self._password_long_prefixes.extend(prefixes)
 
-    def support(self, value: List[str]) -> bool:
+    def support(self, value: list[str]) -> bool:
         """
         仅认领"确有密码参数"的命令列表（类型 + 内容探测；且为 :meth:`apply` 屏蔽目标
         的超集，避免自动探测漏脱敏）。
@@ -135,7 +136,7 @@ class CommandPasswordMasker(Masker[List[str]]):
         flags = self._tool_flags.get(self._normalize_tool_name(value[0]), frozenset())
         return any(part.startswith(f) for part in value for f in flags)
 
-    def apply(self, cmd: List[str]) -> List[str]:
+    def apply(self, cmd: list[str]) -> list[str]:
         """
         屏蔽命令中的密码参数，返回脱敏后的新命令列表（原输入不被修改）。
 
@@ -149,7 +150,7 @@ class CommandPasswordMasker(Masker[List[str]]):
         flags = (self._tool_flags.get(self._normalize_tool_name(parts[0]), frozenset())
                  if parts else frozenset())
 
-        masked: List[str] = []
+        masked: list[str] = []
         for part in parts:
             long_hit = next((p for p in self._password_long_prefixes
                              if part.startswith(p)), None)
@@ -169,12 +170,12 @@ class CommandPasswordMasker(Masker[List[str]]):
 
 # region ======== 环境变量脱敏策略 ========
 
-class EnvMasker(Masker[Dict[str, str]]):
+class EnvMasker(Masker[dict[str, str]]):
     """
     环境变量脱敏策略（``Masker[Dict[str, str]]``）。
 
     将环境变量字典中**敏感键**的值替换为占位符（= 实例
-    :attr:`~kunlun.data.mask.Masker.mask_placeholder` 重复 3 次，默认 ``'***'``），其余键
+    :attr:`~pykunlun.data.mask.Masker.mask_placeholder` 重复 3 次，默认 ``'***'``），其余键
     原样保留，返回新字典。键名匹配大小写不敏感。
 
     内置敏感键：``PGPASSWORD`` / ``MYSQL_PWD`` / ``PGPASSFILE``，
@@ -183,8 +184,8 @@ class EnvMasker(Masker[Dict[str, str]]):
     """
 
     def __init__(self, name: str = 'env', priority: int = 300,
-                 sensitive_keys: Optional[Iterable[str]] = None,
-                 mask_placeholder: Optional[str] = None) -> None:
+                 sensitive_keys: Iterable[str] | None = None,
+                 mask_placeholder: str | None = None) -> None:
         """
         Args:
             name: 策略名，默认 ``'env'``。
@@ -197,7 +198,7 @@ class EnvMasker(Masker[Dict[str, str]]):
         super().__init__(name, priority, mask_placeholder)
         if sensitive_keys is None:
             sensitive_keys = {'PGPASSWORD', 'MYSQL_PWD', 'PGPASSFILE'}
-        self._sensitive_upper: FrozenSet[str] = frozenset(k.upper() for k in sensitive_keys)
+        self._sensitive_upper: frozenset[str] = frozenset(k.upper() for k in sensitive_keys)
 
     def register_sensitive_key(self, *keys: str) -> None:
         """
@@ -208,7 +209,7 @@ class EnvMasker(Masker[Dict[str, str]]):
         """
         self._sensitive_upper = self._sensitive_upper | frozenset(k.upper() for k in keys)
 
-    def support(self, value: Dict[str, str]) -> bool:
+    def support(self, value: dict[str, str]) -> bool:
         """
         仅认领"确含敏感键"的字典（类型 + 内容探测，键名大小写不敏感）。
 
@@ -219,7 +220,7 @@ class EnvMasker(Masker[Dict[str, str]]):
             return False
         return any(k.upper() in self._sensitive_upper for k in value)
 
-    def apply(self, env: Dict[str, str]) -> Dict[str, str]:
+    def apply(self, env: dict[str, str]) -> dict[str, str]:
         """
         返回脱敏后的环境变量副本：敏感键（大小写不敏感）的值替换为占位符，其余原样保留。
 
@@ -243,7 +244,7 @@ mask_manager.register_masker(CommandPasswordMasker())
 mask_manager.register_masker(EnvMasker())
 
 
-def register_masker(masker: Masker[Any]) -> Optional[Masker[Any]]:
+def register_masker(masker: Masker[Any]) -> Masker[Any] | None:
     """注册一个策略到 :data:`mask_manager`（转发，按策略名存放，允许覆盖同名）。
 
     Returns:
@@ -252,7 +253,7 @@ def register_masker(masker: Masker[Any]) -> Optional[Masker[Any]]:
     return mask_manager.register_masker(masker)
 
 
-def unregister_masker(name: str) -> Optional[Masker[Any]]:
+def unregister_masker(name: str) -> Masker[Any] | None:
     """
     取消注册策略（转发）。
 
@@ -262,7 +263,7 @@ def unregister_masker(name: str) -> Optional[Masker[Any]]:
     return mask_manager.unregister_masker(name)
 
 
-def get_masker(name: str) -> Optional[Masker[Any]]:
+def get_masker(name: str) -> Masker[Any] | None:
     """
     按名获取策略实例（不执行脱敏，转发）。
 
@@ -279,7 +280,7 @@ def has_masker(name: str) -> bool:
     return mask_manager.has_masker(name)
 
 
-def get_masker_names(name_pattern: Optional[str] = None) -> List[str]:
+def get_masker_names(name_pattern: str | None = None) -> list[str]:
     """
     列出已注册策略名（转发）。
 
@@ -299,7 +300,7 @@ def mask(value: Any) -> Any:
     按优先级逐个试探已注册策略的 ``support``，首个命中者执行：
 
       - **字符串**值：手机号/身份证/银行卡/邮箱/姓名按对应规则脱敏，均不识别时由
-        :class:`~kunlun.data.mask.UniversalMasker` 兜底为 ``'***'``；
+        :class:`~pykunlun.data.mask.UniversalMasker` 兜底为 ``'***'``；
       - **命令**（``List[str]``）：由 :class:`CommandPasswordMasker` 屏蔽密码参数；
       - **环境变量**（``Dict[str, str]``）：由 :class:`EnvMasker` 屏蔽敏感键的值；
       - 其他未被任何策略认领的类型：原样返回（**识别不了就不乱改**）。

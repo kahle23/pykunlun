@@ -12,6 +12,7 @@ from . import (
     maskutil,
     modutil,
     objutil,
+    pathutil,
     timeutil,
     validation,
 )
@@ -26,6 +27,7 @@ __all__ = [
     'maskutil',
     'modutil',
     'objutil',
+    'pathutil',
     'timeutil',
     'validation',
 ]

@@ -17,7 +17,6 @@
 import os
 import platform as _platform
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
 
 # 环境变量写入范围常量（set_var 的 scope 参数取值）
 SCOPE_SYSTEM = 1  # 系统级环境变量
@@ -44,7 +43,7 @@ class EnvVarService(ABC):
         self.platform = platform
 
     @abstractmethod
-    def set_var(self, name: str, value: str, scope: Optional[int] = None) -> bool:
+    def set_var(self, name: str, value: str, scope: int | None = None) -> bool:
         """
         设置环境变量（永久生效）。
 
@@ -159,7 +158,7 @@ class EnvVarManager:
 
     def __init__(self) -> None:
         # 适配器注册表：platform name -> EnvVarService 实例（本实例独有）
-        self._registry: Dict[str, EnvVarService] = {}
+        self._registry: dict[str, EnvVarService] = {}
 
     @staticmethod
     def _current_platform() -> str:
@@ -192,7 +191,7 @@ class EnvVarManager:
             return True
         return False
 
-    def get_service(self, platform: Optional[str] = None) -> EnvVarService:
+    def get_service(self, platform: str | None = None) -> EnvVarService:
         """
         获取指定平台的环境变量管理实例。
 
@@ -218,7 +217,7 @@ class EnvVarManager:
             )
         return service
 
-    def get_supported_platforms(self) -> List[str]:
+    def get_supported_platforms(self) -> list[str]:
         """
         获取所有已注册的平台标识列表。
 

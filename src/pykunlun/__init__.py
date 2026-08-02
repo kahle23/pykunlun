@@ -15,7 +15,7 @@ from .core import (
 )
 from .data import Masker, MaskManager
 from .db import RdbCfg, RdbClient, RdbManager
-from .envinfo import pkginfo
+from .envinfo import osenv, pkginfo, pyinfo
 from .system import EnvVarManager, EnvVarService, env_var, pip
 from .util import (
     fileutil,
@@ -24,6 +24,7 @@ from .util import (
     maskutil,
     modutil,
     objutil,
+    pathutil,
     timeutil,
     validation,
 )
@@ -56,8 +57,11 @@ __all__ = [
     'maskutil',
     'modutil',
     'objutil',
+    'osenv',
+    'pathutil',
     'pip',
     'pkginfo',
+    'pyinfo',
     'timeutil',
     'validation',
 ]

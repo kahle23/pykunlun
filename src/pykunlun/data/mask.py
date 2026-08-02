@@ -14,14 +14,14 @@
     :class:`EmailMasker` / :class:`NameMasker` / :class:`UniversalMasker`（均为
     ``Masker[str]``）。
 
-默认管理器实例、命令行与环境变量脱敏、对外门面，由 :mod:`kunlun.util.maskutil` 提供。
+默认管理器实例、命令行与环境变量脱敏、对外门面，由 :mod:`pykunlun.util.maskutil` 提供。
 """
 
 import fnmatch
 import re
 import threading
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Generic, List, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 
 #: 脱敏策略的值类型参数。子类通过 ``Masker[str]`` / ``Masker[List[str]]`` 等声明自己
 #: 处理的值类型，``support`` 的入参与 ``apply`` 的入参/出参均绑定到该 ``T``（入参出参
@@ -60,8 +60,8 @@ class Masker(ABC, Generic[T]):
             将其重复 3 次（``'***'``），:meth:`_mask_part` 按被掩码长度逐字符重复。
     """
 
-    def __init__(self, name: Optional[str] = None, priority: Optional[int] = None,
-                 mask_placeholder: Optional[str] = None) -> None:
+    def __init__(self, name: str | None = None, priority: int | None = None,
+                 mask_placeholder: str | None = None) -> None:
         """
         Args:
             name: 策略名（注册到 :class:`MaskManager` 的键）；为空或纯空白时抛出。
@@ -195,8 +195,8 @@ class PhoneMasker(Masker[str]):
 
     _RE = re.compile(r'^1\d{10}$')
 
-    def __init__(self, name: str = 'phone', priority: Optional[int] = None,
-                 mask_placeholder: Optional[str] = None):
+    def __init__(self, name: str = 'phone', priority: int | None = None,
+                 mask_placeholder: str | None = None):
         super().__init__(name, priority, mask_placeholder)
 
     def support(self, value: str) -> bool:
@@ -218,7 +218,7 @@ class IdCardMasker(Masker[str]):
     _RE = re.compile(r'^\d{17}[\dXx]$')
 
     def __init__(self, name: str = 'idcard', priority: int = 200,
-                 mask_placeholder: Optional[str] = None):
+                 mask_placeholder: str | None = None):
         super().__init__(name, priority, mask_placeholder)
 
     def support(self, value: str) -> bool:
@@ -238,8 +238,8 @@ class BankCardMasker(Masker[str]):
 
     _RE = re.compile(r'^\d{16,19}$')
 
-    def __init__(self, name: str = 'bankcard', priority: Optional[int] = None,
-                 mask_placeholder: Optional[str] = None):
+    def __init__(self, name: str = 'bankcard', priority: int | None = None,
+                 mask_placeholder: str | None = None):
         super().__init__(name, priority, mask_placeholder)
 
     def support(self, value: str) -> bool:
@@ -260,8 +260,8 @@ class EmailMasker(Masker[str]):
 
     _RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 
-    def __init__(self, name: str = 'email', priority: Optional[int] = None,
-                 mask_placeholder: Optional[str] = None):
+    def __init__(self, name: str = 'email', priority: int | None = None,
+                 mask_placeholder: str | None = None):
         super().__init__(name, priority, mask_placeholder)
 
     def support(self, value: str) -> bool:
@@ -287,7 +287,7 @@ class NameMasker(Masker[str]):
     _RE = re.compile(r'^[\u4e00-\u9fff]{2,4}$')
 
     def __init__(self, name: str = 'name', priority: int = 50,
-                 mask_placeholder: Optional[str] = None):
+                 mask_placeholder: str | None = None):
         super().__init__(name, priority, mask_placeholder)
 
     def support(self, value: str) -> bool:
@@ -308,8 +308,8 @@ class UniversalMasker(Masker[str]):
     "识别不了也脱敏"。非字符串值不归本策略兜底。
     """
 
-    def __init__(self, name: Optional[str] = None, priority: int = 0,
-                 mask_placeholder: Optional[str] = None):
+    def __init__(self, name: str | None = None, priority: int = 0,
+                 mask_placeholder: str | None = None):
         super().__init__(name, priority, mask_placeholder)
 
     def support(self, value: str) -> bool:
@@ -337,11 +337,11 @@ class MaskManager:
         :class:`NameMasker` / :class:`UniversalMasker`（注册名 ``'default'``，str 兜底）。
 
         注意：这里只注册"数据值"层面的通用策略；命令行参数、环境变量等"工具型"策略
-        （如 :class:`~kunlun.util.maskutil.CommandPasswordMasker`）不属内置数据策略，
-        由 :mod:`kunlun.util.maskutil` 按需追加注册。之后可通过 :meth:`register_masker`
+        （如 :class:`~pykunlun.util.maskutil.CommandPasswordMasker`）不属内置数据策略，
+        由 :mod:`pykunlun.util.maskutil` 按需追加注册。之后可通过 :meth:`register_masker`
         追加或覆盖。
         """
-        self._maskers: Dict[str, Masker[Any]] = {}
+        self._maskers: dict[str, Masker[Any]] = {}
         self._lock = threading.RLock()
         self.register_masker(IdCardMasker())
         self.register_masker(PhoneMasker())
@@ -364,7 +364,7 @@ class MaskManager:
             raise ValueError("脱敏策略名 name 不能为空")
         return stripped
 
-    def register_masker(self, masker: Masker[Any]) -> Optional[Masker[Any]]:
+    def register_masker(self, masker: Masker[Any]) -> Masker[Any] | None:
         """
         注册一个策略（按其 :attr:`Masker.name` 存放，允许覆盖同名）。
 
@@ -383,7 +383,7 @@ class MaskManager:
             self._maskers[key] = masker
             return old
 
-    def unregister_masker(self, name: str) -> Optional[Masker[Any]]:
+    def unregister_masker(self, name: str) -> Masker[Any] | None:
         """
         取消注册策略。
 
@@ -400,7 +400,7 @@ class MaskManager:
         with self._lock:
             return self._maskers.pop(key, None)
 
-    def get_masker(self, name: str) -> Optional[Masker[Any]]:
+    def get_masker(self, name: str) -> Masker[Any] | None:
         """
         按名获取策略（不执行脱敏）。
 
@@ -434,7 +434,7 @@ class MaskManager:
         with self._lock:
             return key in self._maskers
 
-    def get_masker_names(self, name_pattern: Optional[str] = None) -> List[str]:
+    def get_masker_names(self, name_pattern: str | None = None) -> list[str]:
         """
         列出已注册策略名。
 

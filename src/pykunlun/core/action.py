@@ -13,14 +13,15 @@
 
 import fnmatch
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 # region ======== 动作管理 ========
-_actions: Dict[str, Callable[..., Any]] = {}
+_actions: dict[str, Callable[..., Any]] = {}
 _lock = threading.Lock()
 
 
-def _resolve_name(name: Optional[str]) -> str:
+def _resolve_name(name: str | None) -> str:
     """
     解析动作名称：去除前后空格，且不能为空。
 
@@ -41,7 +42,7 @@ def _resolve_name(name: Optional[str]) -> str:
     return stripped
 
 
-def _match_names_unlocked(name_pattern: Optional[str]) -> List[str]:
+def _match_names_unlocked(name_pattern: str | None) -> list[str]:
     """
     无锁版名称匹配（调用方必须已持有 _lock）。
 
@@ -59,7 +60,7 @@ def _match_names_unlocked(name_pattern: Optional[str]) -> List[str]:
 def register(
     name: str,
     action_obj: Callable[..., Any],
-) -> Optional[Callable[..., Any]]:
+) -> Callable[..., Any] | None:
     """
     注册动作（允许覆盖同名动作）。
 
@@ -83,7 +84,7 @@ def register(
         return old
 
 
-def unregister(name: str) -> Optional[Callable[..., Any]]:
+def unregister(name: str) -> Callable[..., Any] | None:
     """
     取消注册动作。
 
@@ -101,7 +102,7 @@ def unregister(name: str) -> Optional[Callable[..., Any]]:
         return _actions.pop(name, None)
 
 
-def get_action(name: str) -> Optional[Callable[..., Any]]:
+def get_action(name: str) -> Callable[..., Any] | None:
     """
     获取指定动作。
 
@@ -137,7 +138,7 @@ def has_action(name: str) -> bool:
         return name in _actions
 
 
-def get_names(name_pattern: Optional[str] = None) -> List[str]:
+def get_names(name_pattern: str | None = None) -> list[str]:
     """
     获取匹配的动作名称列表。
 
@@ -151,7 +152,7 @@ def get_names(name_pattern: Optional[str] = None) -> List[str]:
         return _match_names_unlocked(name_pattern)
 
 
-def clear(name_pattern: Optional[str] = None) -> int:
+def clear(name_pattern: str | None = None) -> int:
     """
     清空动作。
 

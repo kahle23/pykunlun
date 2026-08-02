@@ -7,7 +7,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Type, TypeVar, Union
+from typing import Any, TypeVar
 
 from . import logutil
 from .validation import check_dataclass_required_fields
@@ -18,7 +18,7 @@ log = logutil.getLogger(__name__)
 T = TypeVar('T')
 
 
-def load_dataclass_from_json_file(file_path: Union[str, Path], data_class: Type[T]) -> T:
+def load_dataclass_from_json_file(file_path: str | Path, data_class: type[T]) -> T:
     """
     从 JSON 文件加载 dataclass 实例对象。
 
@@ -44,7 +44,7 @@ def load_dataclass_from_json_file(file_path: Union[str, Path], data_class: Type[
         raise FileNotFoundError(f"文件不存在: {file_path}")
     # 读取 JSON 文件内容
     with open(file_path, 'r', encoding='utf-8') as f:
-        data: Dict[str, Any] = json.load(f)
+        data: dict[str, Any] = json.load(f)
     # 校验必填字段
     check_dataclass_required_fields(data, data_class)
     return data_class(**data)

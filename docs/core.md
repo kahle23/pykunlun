@@ -1,6 +1,6 @@
 # core 模块使用指南
 
-> 本文档详细记录 `kunlun.core` 包中各抽象模块的使用方法。
+> 本文档详细记录 `pykunlun.core` 包中各抽象模块的使用方法。
 
 ## 目录
 
@@ -28,7 +28,7 @@
 ### 1.2 注册与取消注册
 
 ```python
-from kunlun.core import action
+from pykunlun.core import action
 
 def greet(name: str) -> str:
     return f"Hello, {name}!"
@@ -47,7 +47,7 @@ removed = action.unregister("greet")
 ### 1.3 查询动作
 
 ```python
-from kunlun.core import action
+from pykunlun.core import action
 
 # 判断动作是否存在
 action.has_action("greet")  # True / False
@@ -66,7 +66,7 @@ names = action.get_names("*ea*")   # ["greet"]
 ### 1.4 执行动作
 
 ```python
-from kunlun.core import action
+from pykunlun.core import action
 
 # 注册并执行
 action.register("add", lambda a, b: a + b)
@@ -85,7 +85,7 @@ except KeyError as e:
 ### 1.5 清空动作
 
 ```python
-from kunlun.core import action
+from pykunlun.core import action
 
 # 清空匹配的动作，返回实际清除的数量
 count = action.clear("gre*")
@@ -112,7 +112,7 @@ total = action.clear()
 ### 2.2 定义自定义命令
 
 ```python
-from kunlun.core.cli import Command, CommandManager
+from pykunlun.core.cli import Command, CommandManager
 
 class GreetCommand(Command):
     @property
@@ -143,7 +143,7 @@ manager.register(GreetCommand())
 ### 2.3 执行命令
 
 ```python
-from kunlun.core.cli import CommandManager, CommandNotFoundError
+from pykunlun.core.cli import CommandManager, CommandNotFoundError
 
 manager = CommandManager()
 # ... 注册命令 ...
@@ -204,7 +204,7 @@ manager.execute_command("help", ["--greet"])
 `CommandManager.main_cli` 解析 `sys.argv` 并执行对应命令，支持启动/关闭回调。
 
 ```python
-from kunlun.core.cli import CommandManager
+from pykunlun.core.cli import CommandManager
 
 manager = CommandManager()
 # ... 注册命令 ...

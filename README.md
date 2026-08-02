@@ -17,8 +17,8 @@
 ### 安装
 
 ```bash
-# 安装 kunlun（使用清华镜像源加速）
-pip install kunlun -i https://pypi.tuna.tsinghua.edu.cn/simple/
+# 安装 pykunlun（使用清华镜像源加速）
+pip install pykunlun -i https://pypi.tuna.tsinghua.edu.cn/simple/
 ```
 
 <br />
@@ -64,6 +64,9 @@ python -m pytest tests/
 ### 打包上传
 
 ```bash
+# 清理 __pycache__ 缓存
+python -m baibao py_clean .
+
 # 构建源码包和 wheel 包
 python -m build
 

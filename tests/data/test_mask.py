@@ -1,5 +1,5 @@
 """
-kunlun.data.mask 抽象层的单元测试。
+pykunlun.data.mask 抽象层的单元测试。
 
 仅测抽象本身：Masker 的实例占位符配置与私有原语（_mask_all / _mask_part）、
 ABC 约束，以及 MaskManager 的注册表 CRUD / 自动探测 / 按名分发 / _resolve_name
@@ -7,11 +7,12 @@ ABC 约束，以及 MaskManager 的注册表 CRUD / 自动探测 / 按名分发 
 具体内置策略的行为由 tests/util/test_maskutil.py 覆盖。
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 
-from kunlun.data.mask import Masker, MaskManager
+from pykunlun.data.mask import Masker, MaskManager
 
 
 # 测试用桩策略：按 support_fn 判定，apply_fn 处理；name/priority/占位符透传给 Masker.__init__。

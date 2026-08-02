@@ -9,7 +9,7 @@ shell 配置文件路径推断等运行时环境探测能力，作为只读的�
 
 import os
 import platform
-from typing import Callable, Optional
+from collections.abc import Callable
 
 # region ======== 平台信息 ========
 
@@ -82,7 +82,7 @@ def get_user_home() -> str:
     return os.path.expanduser("~")
 
 
-def get_app_home(app_name: Optional[str] = None) -> str:
+def get_app_home(app_name: str | None = None) -> str:
     """
     获取应用的数据基础目录（跨平台）。
 
@@ -127,8 +127,8 @@ def get_app_home(app_name: Optional[str] = None) -> str:
 
 
 def get_shell_profile_path(
-    resolver: Optional[Callable[[str, str], Optional[str]]] = None
-) -> Optional[str]:
+    resolver: Callable[[str, str], str | None] | None = None
+) -> str | None:
     """
     获取当前用户的 shell 配置文件路径。
 

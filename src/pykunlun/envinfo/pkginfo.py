@@ -4,21 +4,20 @@
 提供本库顶级包名识别、调用方顶级包名探测、第三方包版本查询等能力，
 常用于日志标记、包管理与环境适配场景。
 
-环境变量的读写与 PATH 管理能力由 :mod:`kunlun.system.env_var`（抽象接口）
+环境变量的读写与 PATH 管理能力由 :mod:`pykunlun.system.env_var`（抽象接口）
 提供，平台具体实现由上层包注册，本模块不涉及。
 
 仅依赖 Python 标准库。
 """
 
 import inspect
-from functools import lru_cache
+from functools import cache
 from importlib.metadata import (
     PackageNotFoundError,  # noqa: F401  透出给调用方捕获
     version,
 )
-from typing import List, Optional
 
-# 本库顶级包名：用于自身识别（如 python -m kunlun 场景），避免在多处硬编码 "kunlun"
+# 本库顶级包名：用于自身识别（如 python -m pykunlun 场景），避免在多处硬编码 "pykunlun"
 _PACKAGE_NAME = __name__.split('.')[0]
 
 
@@ -26,12 +25,12 @@ _PACKAGE_NAME = __name__.split('.')[0]
 
 def get_own_top_package_name() -> str:
     """
-    获取本库（kunlun）的顶级包名。
+    获取本库（pykunlun）的顶级包名。
 
-    用于 ``python -m kunlun`` 等场景下识别自身包名，供版本查询、日志标记、
-    配置目录等模块统一引用，避免在代码中硬编码 ``"kunlun"``。
+    用于 ``python -m pykunlun`` 等场景下识别自身包名，供版本查询、日志标记、
+    配置目录等模块统一引用，避免在代码中硬编码 ``"pykunlun"``。
 
-    注意：返回的是 kunlun 自身的包名。上层库若需要自身的包名，
+    注意：返回的是 pykunlun 自身的包名。上层库若需要自身的包名，
     请直接使用字面量或自行维护，不要调用本函数。
 
     Returns:
@@ -40,7 +39,7 @@ def get_own_top_package_name() -> str:
     return _PACKAGE_NAME
 
 
-def get_caller_top_package_name(skip_packages: Optional[List[str]] = None) -> str:
+def get_caller_top_package_name(skip_packages: list[str] | None = None) -> str:
     """
     获取调用方的顶级包名（跳过库内部调用）。
 
@@ -49,7 +48,7 @@ def get_caller_top_package_name(skip_packages: Optional[List[str]] = None) -> st
     跳过集合中的帧；若整条调用栈都在库内部（如库自身的脚本/测试），
     则回退到最近遇到的库包名，再否则回退到本库包名。
 
-    本函数已自动跳过 kunlun 自身。当 kunlun 作为底层依赖被其它库封装时，
+    本函数已自动跳过 pykunlun 自身。当 pykunlun 作为底层依赖被其它库封装时，
     调用方应将自身（及中间层）的包名通过 ``skip_packages`` 传入，以便穿透
     这些库找到真正的应用调用方。
 
@@ -65,17 +64,17 @@ def get_caller_top_package_name(skip_packages: Optional[List[str]] = None) -> st
         调用方的顶级包名；找不到外部调用方时回退到最近的库包名。
 
     Examples:
-        >>> # kunlun 内部直接调用
+        >>> # pykunlun 内部直接调用
         >>> get_caller_top_package_name()
         >>> # 上层库调用，需穿透该库找到其上层应用
         >>> get_caller_top_package_name(["mylib"])
     """
-    # 跳过集合：默认含本库（kunlun）自身，合并调用方传入的额外库包名
+    # 跳过集合：默认含本库（pykunlun）自身，合并调用方传入的额外库包名
     skip = {_PACKAGE_NAME}
     if skip_packages:
         skip.update(str(p).split('.')[0] for p in skip_packages)
     # 记录遍历中最近遇到的"库"包名（非本库），作为找不到外部调用方时的回退值。
-    # 例如某上层库调用本函数且整条栈都在该库/kunlun 内时，回退到该库包名。
+    # 例如某上层库调用本函数且整条栈都在该库/pykunlun 内时，回退到该库包名。
     fallback = _PACKAGE_NAME
     # 从当前帧的上一帧（调用方）开始向上遍历；用 f_back 链避免 inspect.stack
     # 抓取每帧源码上下文的开销，也避免持有整个栈的帧引用
@@ -94,7 +93,7 @@ def get_caller_top_package_name(skip_packages: Optional[List[str]] = None) -> st
     return fallback
 
 
-@lru_cache(maxsize=None)
+@cache
 def get_package_version(package_name: str) -> str:
     """
     获取指定包的版本号。

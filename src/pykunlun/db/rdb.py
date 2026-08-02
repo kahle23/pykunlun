@@ -12,16 +12,17 @@
 由上层包在导入时通过 :meth:`RdbManager.register_client_class` 注册实现类。
 随后即可用 :meth:`RdbManager.register` 传入 :class:`RdbCfg` 工厂化创建实例。
 
-仅依赖 Python 标准库与 kunlun 自身工具模块。
+仅依赖 Python 标准库与 pykunlun 自身工具模块。
 """
 
 import re
 import threading
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any
 
-from kunlun.util import logutil, validation
+from pykunlun.util import logutil, validation
 
 log = logutil.getLogger(__name__)
 
@@ -64,14 +65,14 @@ class RdbCfg:
     交由 :meth:`RdbClient._validate_and_prepare_cfg` 在构造客户端实例时自动完成。
     """
 
-    db_type: Optional[str] = None
-    charset: Optional[str] = None
-    host: Optional[str] = None
-    port: Optional[int] = None
-    username: Optional[str] = None
-    password: Optional[str] = None
-    database: Optional[str] = None
-    validation_query: Optional[str] = None
+    db_type: str | None = None
+    charset: str | None = None
+    host: str | None = None
+    port: int | None = None
+    username: str | None = None
+    password: str | None = None
+    database: str | None = None
+    validation_query: str | None = None
     read_only: bool = False
 
 
@@ -222,8 +223,8 @@ class RdbClient(ABC):
         if not cfg.validation_query:
             cfg.validation_query = 'SELECT 1'
 
-    def _normalize_rows(self, cursor, rows: List,
-                        converters: Optional[Dict[type, Callable[[Any], Any]]] = None) -> List[Dict]:
+    def _normalize_rows(self, cursor, rows: list,
+                        converters: dict[type, Callable[[Any], Any]] | None = None) -> list[dict]:
         """
         将查询结果行整形为字典列表。
 
@@ -248,10 +249,10 @@ class RdbClient(ABC):
             return []
 
         # 值转换器：按类型匹配转换函数，保持原样
-        def _convert(d: Dict) -> Dict:
+        def _convert(d: dict) -> dict:
             if not converters:
                 return d
-            result: Dict = {}
+            result: dict = {}
             for k, v in d.items():
                 # None 值不参与转换（保持原样）
                 if v is None:
@@ -302,7 +303,7 @@ class RdbClient(ABC):
         """
         获取数据库驱动模块。
 
-        各实现自报模块名与 pip 安装名，未安装时建议通过 :func:`kunlun.modutil.import_module` 自动安装。
+        各实现自报模块名与 pip 安装名，未安装时建议通过 :func:`pykunlun.modutil.import_module` 自动安装。
 
         Returns:
             数据库驱动模块对象。
@@ -310,7 +311,7 @@ class RdbClient(ABC):
         pass
 
     @abstractmethod
-    def build_connect_kwargs(self) -> Dict[str, Any]:
+    def build_connect_kwargs(self) -> dict[str, Any]:
         """
         构建驱动 ``connect()`` 所需的关键字参数（基于绑定的 :attr:`cfg`）。
 
@@ -361,8 +362,8 @@ class RdbClient(ABC):
         driver = self.get_driver()
         return driver.connect(**self.build_connect_kwargs())
 
-    def query(self, sql: str, params: Optional[Tuple[Any, ...]] = None,
-              converters: Optional[Dict[type, Callable[[Any], Any]]] = None) -> List[Dict]:
+    def query(self, sql: str, params: tuple[Any, ...] | None = None,
+              converters: dict[type, Callable[[Any], Any]] | None = None) -> list[dict]:
         """
         执行查询并返回结果（自动管理连接生命周期）。
 
@@ -403,7 +404,7 @@ class RdbClient(ABC):
             if connection:
                 connection.close()
 
-    def execute(self, sql: str, params: Optional[Tuple[Any, ...]] = None) -> int:
+    def execute(self, sql: str, params: tuple[Any, ...] | None = None) -> int:
         """
         执行 SQL 语句（自动管理连接生命周期）。
 
@@ -535,7 +536,7 @@ class ReadOnlyClient(RdbClient):
     # region ======== 构造与属性转发 ========
 
     def __init__(self, inner: RdbClient,
-                 forbidden_verbs: Optional[Iterable[str]] = None) -> None:
+                 forbidden_verbs: Iterable[str] | None = None) -> None:
         """
         Args:
             inner: 被包裹的真实 :class:`RdbClient`（已完成配置校验与初始化）。
@@ -619,7 +620,7 @@ class ReadOnlyClient(RdbClient):
         """透传内层客户端的驱动模块（满足基类抽象方法）。"""
         return self._inner.get_driver()
 
-    def build_connect_kwargs(self) -> Dict[str, Any]:
+    def build_connect_kwargs(self) -> dict[str, Any]:
         """透传内层客户端的连接参数（满足基类抽象方法）。"""
         return self._inner.build_connect_kwargs()
 
@@ -639,8 +640,8 @@ class ReadOnlyClient(RdbClient):
         """
         return self._forbidden_verbs
 
-    def query(self, sql: str, params: Optional[Tuple[Any, ...]] = None,
-              converters: Optional[Dict[type, Callable[[Any], Any]]] = None) -> List[Dict]:
+    def query(self, sql: str, params: tuple[Any, ...] | None = None,
+              converters: dict[type, Callable[[Any], Any]] | None = None) -> list[dict]:
         """
         只读查询（拦截写操作后转发给内层客户端）。
 
@@ -651,7 +652,7 @@ class ReadOnlyClient(RdbClient):
         self._reject_write_sql(sql)
         return self._inner.query(sql, params, converters)
 
-    def execute(self, sql: str, params: Optional[Tuple[Any, ...]] = None) -> int:
+    def execute(self, sql: str, params: tuple[Any, ...] | None = None) -> int:
         """
         只读客户端禁止 :meth:`execute`。
 
@@ -735,9 +736,9 @@ class RdbManager:
 
     def __init__(self) -> None:
         # 类注册表：db_type -> RdbClient 子类（用于按 cfg.db_type 工厂化创建实例）
-        self._class_registry: Dict[str, Type[RdbClient]] = {}
+        self._class_registry: dict[str, type[RdbClient]] = {}
         # 实例注册表：name -> RdbClient 实例（本实例独有）
-        self._client_registry: Dict[str, RdbClient] = {}
+        self._client_registry: dict[str, RdbClient] = {}
         self._lock = threading.RLock()
 
     # endregion
@@ -795,7 +796,7 @@ class RdbManager:
                 )
         return self._maybe_wrap_read_only(client_cls(cfg))
 
-    def register_client_class(self, client_cls: Type[RdbClient]) -> None:
+    def register_client_class(self, client_cls: type[RdbClient]) -> None:
         """
         注册或替换一个 :class:`RdbClient` 实现类（按类自身的 :attr:`~RdbClient.db_type` 归档）。
 
@@ -843,7 +844,7 @@ class RdbManager:
                 return True
             return False
 
-    def get_client_class(self, db_type: str) -> Type[RdbClient]:
+    def get_client_class(self, db_type: str) -> type[RdbClient]:
         """
         获取指定数据库类型的 :class:`RdbClient` 实现类。
 
@@ -869,7 +870,7 @@ class RdbManager:
                 )
             return client_cls
 
-    def get_registered_client_types(self) -> List[str]:
+    def get_registered_client_types(self) -> list[str]:
         """
         获取所有已注册（即支持工厂化创建）的数据库类型列表。
 
@@ -883,13 +884,13 @@ class RdbManager:
 
     # region ======== 实例注册表（name -> RdbClient 实例） ========
 
-    def _resolve_name(self, name: Optional[str]) -> str:
+    def _resolve_name(self, name: str | None) -> str:
         """
         将名称解析为注册表键：为空时回落到 :attr:`DEFAULT_NAME`。
         """
         return name if name else self.DEFAULT_NAME
 
-    def register(self, name: str, rdb_client: Union[RdbClient, RdbCfg]) -> None:
+    def register(self, name: str, rdb_client: RdbClient | RdbCfg) -> None:
         """
         注册或替换指定名称的客户端实例。
 
@@ -918,7 +919,7 @@ class RdbManager:
         with self._lock:
             self._client_registry[key] = client
 
-    def unregister(self, name: Optional[str] = None) -> bool:
+    def unregister(self, name: str | None = None) -> bool:
         """
         取消注册指定名称的客户端实例。
 
@@ -935,7 +936,7 @@ class RdbManager:
                 return True
             return False
 
-    def get_client(self, name: Optional[str] = None) -> RdbClient:
+    def get_client(self, name: str | None = None) -> RdbClient:
         """
         获取指定名称的客户端实例。
 
@@ -959,7 +960,7 @@ class RdbManager:
                 )
             return client
 
-    def get_registered_names(self) -> List[str]:
+    def get_registered_names(self) -> list[str]:
         """
         获取所有已注册的实例名称列表。
 
@@ -973,7 +974,7 @@ class RdbManager:
 
     # region ======== 执行便捷方法（透传 RdbClient） ========
 
-    def get_connection(self, name: Optional[str] = None):
+    def get_connection(self, name: str | None = None):
         """
         打开并返回指定实例的数据库连接（透传 :meth:`RdbClient.get_connection`）。
 
@@ -996,9 +997,9 @@ class RdbManager:
             )
         return client.get_connection()
 
-    def query(self, sql: str, params: Optional[Tuple[Any, ...]] = None,
-              converters: Optional[Dict[type, Callable[[Any], Any]]] = None,
-              name: Optional[str] = None) -> List[Dict]:
+    def query(self, sql: str, params: tuple[Any, ...] | None = None,
+              converters: dict[type, Callable[[Any], Any]] | None = None,
+              name: str | None = None) -> list[dict]:
         """
         执行查询（透传 :meth:`RdbClient.query`）。
 
@@ -1016,8 +1017,8 @@ class RdbManager:
         """
         return self.get_client(name).query(sql, params, converters)
 
-    def execute(self, sql: str, params: Optional[Tuple[Any, ...]] = None,
-                name: Optional[str] = None) -> int:
+    def execute(self, sql: str, params: tuple[Any, ...] | None = None,
+                name: str | None = None) -> int:
         """
         执行 SQL 语句（透传 :meth:`RdbClient.execute`）。
 

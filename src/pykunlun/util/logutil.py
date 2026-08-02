@@ -6,7 +6,7 @@
 应用入口可通过 setup() 传入自定义 dictConfig 覆盖默认行为。
 
 用法：
-    from kunlun.util import logutil
+    from pykunlun.util import logutil
     log = logutil.getLogger(__name__)
     log.info("...")
 """

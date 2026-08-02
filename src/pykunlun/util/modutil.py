@@ -6,7 +6,8 @@
 """
 
 import importlib
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 from ..system import pip
 from . import logutil
@@ -14,7 +15,7 @@ from . import logutil
 log = logutil.getLogger(__name__)
 
 
-def import_module(module_name: str, install_name: Optional[str] = None):
+def import_module(module_name: str, install_name: str | None = None):
     """
     动态导入模块，未安装时自动安装。
 
@@ -48,7 +49,7 @@ def import_module(module_name: str, install_name: Optional[str] = None):
         return importlib.import_module(module_name)
 
 
-def create_lazy_loader(lazy_imports: Dict[str, str]) -> Callable[[str], Any]:
+def create_lazy_loader(lazy_imports: dict[str, str]) -> Callable[[str], Any]:
     """
     创建模块懒加载器。
 

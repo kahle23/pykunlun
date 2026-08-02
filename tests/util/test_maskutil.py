@@ -1,15 +1,13 @@
 """
-kunlun.util.maskutil 脱敏门面的单元测试。
+pykunlun.util.maskutil 脱敏门面的单元测试。
 
-覆盖：6 个内置数据策略（定义于 kunlun.data.mask）的 support/apply、命令行密码脱敏策略
+覆盖：6 个内置数据策略（定义于 pykunlun.data.mask）的 support/apply、命令行密码脱敏策略
 CommandPasswordMasker、环境变量脱敏策略 EnvMasker、mask_manager 自动探测（含优先级
 消歧与非字符串类型）、mask() / mask_by_name() 等转发门面、命令脱敏（含工具名识别）、
 环境变量脱敏。
 """
 
-from kunlun.util import maskutil
-from kunlun.util import CommandPasswordMasker, EnvMasker
-from kunlun.data.mask import (
+from pykunlun.data.mask import (
     BankCardMasker,
     EmailMasker,
     IdCardMasker,
@@ -17,6 +15,7 @@ from kunlun.data.mask import (
     PhoneMasker,
     UniversalMasker,
 )
+from pykunlun.util import CommandPasswordMasker, EnvMasker, maskutil
 
 # region ======== 内置数据策略 ========
 

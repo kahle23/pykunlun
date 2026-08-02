@@ -7,9 +7,10 @@
 import sys
 import threading
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any, Optional
 
-from kunlun.envinfo import pkginfo
+from pykunlun.envinfo import pkginfo
 
 
 class Command(ABC):
@@ -29,7 +30,7 @@ class Command(ABC):
         pass
 
     @property
-    def abbr(self) -> Optional[str]:
+    def abbr(self) -> str | None:
         """
         获取命令缩写（如 -x，如果需要-，也需要写在此处）。
 
@@ -54,7 +55,7 @@ class Command(ABC):
         return f"{self.name} [参数1] [参数2] ..."
 
     @abstractmethod
-    def execute(self, args: List[str]) -> Any:
+    def execute(self, args: list[str]) -> Any:
         """
         执行命令。
 
@@ -147,7 +148,7 @@ class HelpCommand(Command):
             f"使用 {self.usage} 查看具体命令的详细用法"
         )
 
-    def execute(self, args: List[str]) -> Any:
+    def execute(self, args: list[str]) -> Any:
         # 如果指定了命令，显示具体命令的帮助
         if args:
             command_name = args[0]
@@ -184,13 +185,13 @@ class CommandManager:
         """
         初始化命令管理器，创建空的命令注册表和线程锁，并注册默认帮助命令。
         """
-        self._commands: Dict[str, Command] = {}
+        self._commands: dict[str, Command] = {}
         # 缩写 -> 命令名称的映射
-        self._abbr_map: Dict[str, str] = {}
+        self._abbr_map: dict[str, str] = {}
         # 可重入锁，允许同一线程多次获取
         self._lock = threading.RLock()
         # 帮助命令实例（独立于 _commands，不通过 register 注册）
-        self._help_command: Optional[HelpCommand] = HelpCommand(self)
+        self._help_command: HelpCommand | None = HelpCommand(self)
 
     def register(self, command: Command) -> None:
         """
@@ -290,7 +291,7 @@ class CommandManager:
             self._commands.clear()
             self._abbr_map.clear()
 
-    def get_command(self, name_or_abbr: str) -> Optional[Command]:
+    def get_command(self, name_or_abbr: str) -> Command | None:
         """
         获取命令（支持命令名称或缩写，包括帮助命令）。
 
@@ -319,7 +320,7 @@ class CommandManager:
                     return self._help_command
             return None
 
-    def get_all_commands(self) -> Dict[str, Command]:
+    def get_all_commands(self) -> dict[str, Command]:
         """
         获取所有已注册的命令（包括帮助命令）。
         """
@@ -332,7 +333,7 @@ class CommandManager:
             # 返回所有命令
             return commands
 
-    def execute_command(self, command_name: str, args: List[str]) -> Any:
+    def execute_command(self, command_name: str, args: list[str]) -> Any:
         """
         执行命令（支持命令名称或缩写）。
 
@@ -357,8 +358,8 @@ class CommandManager:
 
     def main_cli(
         self,
-        on_startup: Optional[Callable[[List[str]], Any]] = None,
-        on_shutdown: Optional[Callable[[List[str]], Any]] = None,
+        on_startup: Callable[[list[str]], Any] | None = None,
+        on_shutdown: Callable[[list[str]], Any] | None = None,
     ):
         """
         命令行入口方法，解析参数并执行对应命令。

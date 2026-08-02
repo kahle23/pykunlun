@@ -6,12 +6,11 @@
 """
 
 from datetime import date, datetime, time
-from typing import Dict, List, Optional, Union
 
 # 时间格式列表，按优先级排序（datetime 格式在前）
 # 优先级：明确性 > 常用性 > 标准性
 # 格式：{格式字符串: 解析成功次数}
-_TIME_FORMATS: Dict[str, int] = {
+_TIME_FORMATS: dict[str, int] = {
     # ===== 日期时间格式 =====
     # ISO 8601 标准（优先级最高，国际通用）
     "%Y-%m-%dT%H:%M:%S.%fZ": 0,          # ISO 8601 带微秒 UTC
@@ -125,7 +124,7 @@ def remove_format(fmt: str) -> bool:
     return False
 
 
-def get_formats() -> List[str]:
+def get_formats() -> list[str]:
     """
     获取时间格式列表。
 
@@ -135,7 +134,7 @@ def get_formats() -> List[str]:
     return list(_TIME_FORMATS.keys())
 
 
-def get_format_stats() -> Dict[str, int]:
+def get_format_stats() -> dict[str, int]:
     """
     获取格式解析成功次数统计。
 
@@ -165,7 +164,7 @@ def reorder_formats() -> None:
     _TIME_FORMATS.update(sorted_items)
 
 
-def parse(time_str: str) -> Optional[datetime]:
+def parse(time_str: str) -> datetime | None:
     """
     解析日期/时间字符串，自动识别格式并返回 datetime。
 
@@ -199,7 +198,7 @@ def parse(time_str: str) -> Optional[datetime]:
     return None
 
 
-def parse_date(time_str: str) -> Optional[date]:
+def parse_date(time_str: str) -> date | None:
     """
     解析日期/时间字符串并提取 date 部分。
 
@@ -215,7 +214,7 @@ def parse_date(time_str: str) -> Optional[date]:
     return dt.date() if dt else None
 
 
-def parse_time(time_str: str) -> Optional[time]:
+def parse_time(time_str: str) -> time | None:
     """
     解析日期/时间字符串并提取 time 部分。
 
@@ -231,7 +230,7 @@ def parse_time(time_str: str) -> Optional[time]:
     return dt.time() if dt else None
 
 
-def format(time_obj: Optional[Union[date, time, datetime]], fmt: str = "%Y-%m-%d %H:%M:%S") -> Optional[str]:
+def format(time_obj: date | time | datetime | None, fmt: str = "%Y-%m-%d %H:%M:%S") -> str | None:
     """
     格式化日期/时间对象为字符串。
 
@@ -249,7 +248,7 @@ def format(time_obj: Optional[Union[date, time, datetime]], fmt: str = "%Y-%m-%d
     return time_obj.strftime(fmt)
 
 
-def format_str(time_str: str, fmt: str = "%Y-%m-%d %H:%M:%S") -> Optional[str]:
+def format_str(time_str: str, fmt: str = "%Y-%m-%d %H:%M:%S") -> str | None:
     """
     解析日期/时间字符串后按指定格式输出。
 

@@ -1,6 +1,6 @@
 # util 模块使用指南
 
-> 本文档详细记录 `kunlun.util` 包中各工具模块的使用方法。
+> 本文档详细记录 `pykunlun.util` 包中各工具模块的使用方法。
 
 ## 目录
 
@@ -9,7 +9,7 @@
 - [validation - 验证模块](#3-validation---验证模块)
 - [logutil - 日志工具模块](#4-logutil---日志工具模块)
 - [time_ops - 时间模块](#5-time_ops---时间模块)
-- [file_ops - 文件操作模块](#6-file_ops---文件操作模块)
+- [fileutil / pathutil - 文件与路径模块](#6-fileutil--pathutil---文件与路径模块)
 
 ---
 
@@ -28,7 +28,7 @@
 ### 1.2 读取属性
 
 ```python
-from kunlun.util.obj_ops import get_attr
+from pykunlun.util.obj_ops import get_attr
 
 # 对字典取值
 d = {"name": "张三"}
@@ -48,7 +48,7 @@ get_attr(None, "name", "未知")  # "未知"
 ### 1.3 设置与删除属性
 
 ```python
-from kunlun.util.obj_ops import set_attr, del_attr
+from pykunlun.util.obj_ops import set_attr, del_attr
 
 # 字典
 d = {}
@@ -77,7 +77,7 @@ del_attr(u, "name")
 自动检测并安装缺失的 Python 包，安装失败时抛出 `ImportError`。
 
 ```python
-from kunlun.util import modutil
+from pykunlun.util import modutil
 
 # 导入标准库（已存在，直接返回）
 json = modutil.import_module("json")
@@ -95,7 +95,7 @@ cv2 = modutil.import_module("cv2", install_name="opencv-python")
 
 ```python
 from dataclasses import dataclass
-from kunlun.util import loadutil
+from pykunlun.util import loadutil
 
 @dataclass
 class AppConfig:
@@ -126,7 +126,7 @@ config = loadutil.load_dataclass_from_json_file(Path("config.json"), AppConfig)
 生成一个 `__getattr__` 函数，用于实现模块属性的延迟导入。首次访问属性时才导入对应模块，导入后缓存到全局变量中，有效提升大型项目的启动性能。
 
 ```python
-from kunlun.util import modutil
+from pykunlun.util import modutil
 
 # 定义懒加载映射
 _LAZY_IMPORTS = {
@@ -153,7 +153,7 @@ __getattr__ = modutil.create_lazy_loader(_LAZY_IMPORTS)
 
 ```python
 from dataclasses import dataclass
-from kunlun.util import validation
+from pykunlun.util import validation
 
 @dataclass
 class UserConfig:
@@ -178,7 +178,7 @@ validation.check_dataclass_required_fields(data, UserConfig, required_fields=["n
 检查对象的必填字段是否有值（非 None、非空字符串）。
 
 ```python
-from kunlun.util import validation
+from pykunlun.util import validation
 
 class User:
     def __init__(self, name, email):
@@ -210,7 +210,7 @@ except ValueError as e:
 每个模块通过 `getLogger(__name__)` 取得独立 logger，自动获得模块层级名称。
 
 ```python
-from kunlun.util import logutil
+from pykunlun.util import logutil
 
 log = logutil.getLogger(__name__)
 
@@ -229,7 +229,7 @@ except ZeroDivisionError:
 默认配置已能满足大多数场景；如需文件输出、按模块分级等，可在程序入口传入 dictConfig：
 
 ```python
-from kunlun.util import logutil
+from pykunlun.util import logutil
 
 config = {
     "version": 1,
@@ -265,7 +265,7 @@ logutil.setup(config)   # 应早于任何 getLogger 调用
 自动识别多种日期时间格式，返回 `datetime` 对象。
 
 ```python
-from kunlun.util import time_ops
+from pykunlun.util import time_ops
 
 # 解析标准格式
 dt = time_ops.parse("2024-01-15 14:30:00")
@@ -286,7 +286,7 @@ dt = time_ops.parse("invalid date")
 ### 5.2 解析日期和时间
 
 ```python
-from kunlun.util import time_ops
+from pykunlun.util import time_ops
 
 # 提取日期部分
 d = time_ops.parse_date("2024-01-15 14:30:00")  # 返回 date 对象
@@ -298,7 +298,7 @@ t = time_ops.parse_time("2024-01-15 14:30:00")  # 返回 time 对象
 ### 5.3 格式化时间对象
 
 ```python
-from kunlun.util import time_ops
+from pykunlun.util import time_ops
 from datetime import datetime, date
 
 # 格式化 datetime 对象
@@ -317,7 +317,7 @@ result = time_ops.format(None)  # None
 ### 5.4 解析并格式化字符串
 
 ```python
-from kunlun.util import time_ops
+from pykunlun.util import time_ops
 
 # 解析后按指定格式输出
 result = time_ops.format_str("2024-01-15 14:30:00", fmt="%Y/%m/%d")
@@ -330,7 +330,7 @@ result = time_ops.format_str("January 15, 2024", fmt="%Y-%m-%d")
 ### 5.5 管理时间格式
 
 ```python
-from kunlun.util import time_ops
+from pykunlun.util import time_ops
 
 # 获取所有支持的格式
 formats = time_ops.get_formats()
@@ -366,38 +366,38 @@ time_ops.reorder_formats()
 
 ---
 
-## 6. file_ops - 文件操作模块
+## 6. fileutil / pathutil - 文件与路径模块
 
-提供目录清理、路径转换和文件读取三类能力。
+提供目录清理、路径转换和文件读取三类能力，分别由 `fileutil` 与 `pathutil` 承载。
 
 ### 6.1 API 一览
 
-| 方法 / 常量 | 说明 |
-|------|------|
-| `RESOLVE_TYPE_CURRENT` (1) | 解析类型：当前工作目录 |
-| `RESOLVE_TYPE_USER` (2) | 解析类型：用户主目录 |
-| `RESOLVE_TYPE_APP_DATA` (3) | 解析类型：应用数据目录 |
-| `remove_target_dirs(base_dir, name, recursive=False)` | 删除匹配名称的目录，返回删除数量 |
-| `remove_suffix_dirs(base_dir, suffix, recursive=False)` | 删除匹配后缀的目录，返回删除数量 |
-| `resolve_path(relative_path, resolve_type=1, app_name=None)` | 相对路径按解析类型转换为绝对路径 |
-| `read_file_stream(file_path)` | 读取文件返回二进制流（调用方负责关闭） |
-| `read_file_text(file_path, encoding='utf-8')` | 读取文件返回字符串 |
+| 方法 / 常量 | 所属模块 | 说明 |
+|------|------|------|
+| `ResolveType.CURRENT` (1) | pathutil | 解析类型：当前工作目录 |
+| `ResolveType.USER` (2) | pathutil | 解析类型：用户主目录 |
+| `ResolveType.APP_DATA` (3) | pathutil | 解析类型：应用数据目录 |
+| `remove_target_dirs(base_dir, name, recursive=False)` | fileutil | 删除匹配名称的目录，返回删除数量 |
+| `remove_suffix_dirs(base_dir, suffix, recursive=False)` | fileutil | 删除匹配后缀的目录，返回删除数量 |
+| `resolve_relative(relative_path, resolve_type=1, app_name=None)` | pathutil | 相对路径按解析类型转换为绝对路径 |
+| `read_stream(file_path)` | fileutil | 读取文件返回二进制流（调用方负责关闭） |
+| `read_text(file_path, encoding='utf-8')` | fileutil | 读取文件返回字符串 |
 
 ### 6.2 清理构建产物
 
 按目录名或后缀删除目录，可选递归。常用于清理 `__pycache__`、`build`、`*.egg-info`。
 
 ```python
-from kunlun.util.file_ops import remove_target_dirs, remove_suffix_dirs
+from pykunlun.util import fileutil
 
 # 删除顶层的 build 目录
-remove_target_dirs("/path/to/project", "build")
+fileutil.remove_target_dirs("/path/to/project", "build")
 
 # 递归删除所有 __pycache__ 目录
-remove_target_dirs("/path/to/project", "__pycache__", recursive=True)
+fileutil.remove_target_dirs("/path/to/project", "__pycache__", recursive=True)
 
 # 删除顶层的 .egg-info 目录
-remove_suffix_dirs("/path/to/project", ".egg-info")
+fileutil.remove_suffix_dirs("/path/to/project", ".egg-info")
 ```
 
 > 目录不存在抛出 `FileNotFoundError`；权限不足仅告警不抛出。
@@ -407,36 +407,36 @@ remove_suffix_dirs("/path/to/project", ".egg-info")
 将相对路径按解析类型拼接到对应基准目录，返回规范化的绝对路径（仅转换，不校验存在性）。
 
 ```python
-from kunlun.util.file_ops import resolve_path, RESOLVE_TYPE_USER, RESOLVE_TYPE_APP_DATA
+from pykunlun.util import pathutil
 
 # 相对当前工作目录（默认）
-resolve_path("config.ini")
+pathutil.resolve_relative("config.ini")
 # 'C:\\Proj\\config.ini'
 
 # 相对用户主目录
-resolve_path("aa/test.cfg", RESOLVE_TYPE_USER)
+pathutil.resolve_relative("aa/test.cfg", pathutil.ResolveType.USER)
 # '/home/user/aa/test.cfg'
 
 # 相对应用数据目录（跨平台），app_name 缺省时自动取调用者顶级包名
-resolve_path("config.ini", RESOLVE_TYPE_APP_DATA, app_name="myapp")
+pathutil.resolve_relative("config.ini", pathutil.ResolveType.APP_DATA, app_name="myapp")
 # 'C:\\Users\\xxx\\AppData\\Roaming\\myapp\\config.ini'
 ```
 
-> 传入绝对路径或 `resolve_type` 非法时抛出 `ValueError`。
+> 传入空串、绝对路径或 `resolve_type` 非法时抛出 `ValueError`。
 
 ### 6.4 读取文件
 
 自动判断绝对/相对路径（相对路径基于当前工作目录解析）。
 
 ```python
-from kunlun.util.file_ops import read_file_stream, read_file_text
+from pykunlun.util import fileutil
 
 # 读取为字符串（自动关闭句柄）
-content = read_file_text("config.ini")
-content = read_file_text("/etc/hosts", encoding="utf-8")
+content = fileutil.read_text("config.ini")
+content = fileutil.read_text("/etc/hosts", encoding="utf-8")
 
 # 读取为字节流（调用方负责关闭，推荐配合 with）
-with read_file_stream("config.ini") as f:
+with fileutil.read_stream("config.ini") as f:
     data = f.read()
 ```
 
@@ -450,7 +450,7 @@ with read_file_stream("config.ini") as f:
 
 ```python
 from dataclasses import dataclass
-from kunlun.util import loadutil, validation
+from pykunlun.util import loadutil, validation
 
 @dataclass
 class DatabaseConfig:
@@ -474,7 +474,7 @@ validation.check_required_fields_not_empty(
 ### 示例 2：动态导入并处理时间
 
 ```python
-from kunlun.util import modutil, time_ops
+from pykunlun.util import modutil, time_ops
 
 # 动态导入 pandas
 pd = modutil.import_module("pandas")
@@ -491,8 +491,8 @@ print(timestamp)
 ### 示例 3：日志记录工具使用
 
 ```python
-from kunlun.util import logutil
-from kunlun.system import pip
+from pykunlun.util import logutil
+from pykunlun.system import pip
 
 log = logutil.getLogger(__name__)
 
