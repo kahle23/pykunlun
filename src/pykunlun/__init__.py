@@ -13,11 +13,12 @@ from .core import (
     action,
     cli,
 )
-from .data import Masker, MaskManager
+from .data import Cache, CacheManager, Masker, MaskManager, MemoryCache
 from .db import RdbCfg, RdbClient, RdbManager
 from .envinfo import osenv, pkginfo, pyinfo
 from .system import EnvVarManager, EnvVarService, env_var, pip
 from .util import (
+    cacheutil,
     fileutil,
     loadutil,
     logutil,
@@ -34,6 +35,8 @@ from .util.maskutil import CommandPasswordMasker, EnvMasker
 __version__ = pkginfo.get_package_version(pkginfo.get_own_top_package_name())
 
 __all__ = [
+    'Cache',
+    'CacheManager',
     'Command',
     'CommandManager',
     'CommandNotFoundError',
@@ -44,10 +47,12 @@ __all__ = [
     'HelpCommand',
     'MaskManager',
     'Masker',
+    'MemoryCache',
     'RdbCfg',
     'RdbClient',
     'RdbManager',
     'action',
+    'cacheutil',
     'cli',
     'env_var',
     'envinfo',

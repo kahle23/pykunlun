@@ -2,10 +2,11 @@
 通用工具模块。
 
 提供对象操作、文件操作、时间操作、日志、数据校验、
-模块导入与数据加载等无状态纯函数工具，按子模块组织。
+模块导入与数据加载、缓存等工具，按子模块组织。
 """
 
 from . import (
+    cacheutil,
     fileutil,
     loadutil,
     logutil,
@@ -16,11 +17,14 @@ from . import (
     timeutil,
     validation,
 )
+from .cacheutil import cached
 from .maskutil import CommandPasswordMasker, EnvMasker
 
 __all__ = [
     'CommandPasswordMasker',
     'EnvMasker',
+    'cached',
+    'cacheutil',
     'fileutil',
     'loadutil',
     'logutil',

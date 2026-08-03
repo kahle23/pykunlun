@@ -1,7 +1,7 @@
 """
 模块与包信息查询模块。
 
-提供本库顶级包名识别、调用方顶级包名探测、第三方包版本查询等能力，
+提供本库顶级包名识别、调用方顶级包名探测、包名↔分发名转换、第三方包版本查询等能力，
 常用于日志标记、包管理与环境适配场景。
 
 环境变量的读写与 PATH 管理能力由 :mod:`pykunlun.system.env_var`（抽象接口）
@@ -11,17 +11,19 @@
 """
 
 import inspect
-from functools import cache
 from importlib.metadata import (
-    PackageNotFoundError,  # noqa: F401  透出给调用方捕获
+    PackageNotFoundError,  # 同时透出给调用方捕获
+    packages_distributions,
     version,
 )
+
+from pykunlun.util import cached
 
 # 本库顶级包名：用于自身识别（如 python -m pykunlun 场景），避免在多处硬编码 "pykunlun"
 _PACKAGE_NAME = __name__.split('.')[0]
 
 
-# region ======== 模块与包信息 ========
+# region ======== 自身 / 调用方包名识别 ========
 
 def get_own_top_package_name() -> str:
     """
@@ -93,28 +95,96 @@ def get_caller_top_package_name(skip_packages: list[str] | None = None) -> str:
     return fallback
 
 
-@cache
-def get_package_version(package_name: str) -> str:
+# endregion
+
+
+# region ======== 包名 ↔ 分发名转换 ========
+
+@cached(ttl=30 * 60, cacheable=lambda v: v is not None)
+def get_distribution_name(package_name: str) -> str | None:
+    """
+    根据顶级包名（import name）查询对应的分发名（PyPI 安装名）。
+
+    "包名" 是 ``import`` 时用的名字，"分发名" 是 PEP 566 metadata 的 ``Name``
+    字段（在 ``pyproject.toml`` / ``setup.py`` 中声明的 project name）。两者通常
+    相同，但在以下情况会不同：
+
+      - ``PIL``      → ``Pillow``
+      - ``bs4``      → ``beautifulsoup4``
+      - ``yaml``     → ``PyYAML``
+      - ``sklearn``  → ``scikit-learn``
+
+    通过扫描已安装分发的顶级包映射反查；返回的字符串为分发在系统中的原始名
+    （未做 PEP 503 规范化），可直接传给 :func:`importlib.metadata.version` /
+    :func:`importlib.metadata.metadata`。
+
+    缓存策略（由 :func:`~pykunlun.util.cacheutil.cached` 装饰，按顶级包名维度）：
+
+      - **命中**（查到分发名）：缓存，有效期 30 分钟；
+      - **未命中**（返回 ``None``）：经 ``cacheable=lambda v: v is not None``
+        过滤后 **不缓存**，以便包安装后重试即可生效；
+      - 缓存过期或未命中时，下次调用会重新触发
+        :func:`importlib.metadata.packages_distributions` 的全量扫描。
+
+    Args:
+        package_name: 顶级包名（``import`` 时用的名字，如 ``"PIL"``、``"pykunlun"``）。
+            传入带点的包名（如 ``"pykunlun.envinfo"``）也会自动取顶级比较。
+
+    Returns:
+        对应的分发名；包未安装或顶级包映射中没有时返回 ``None``。
+        若一个顶级包被多个分发声明（罕见），返回其中任意一个。
+    """
+    top = str(package_name).split('.')[0]
+    dists = packages_distributions().get(top)
+    return dists[0] if dists else None
+
+
+# endregion
+
+
+# region ======== 版本查询 ========
+
+@cached(ttl=30 * 60)
+def get_package_version(name: str) -> str:
     """
     获取指定包的版本号。
+
+    同时支持传入 **分发名**（PyPI 名，如 ``"Pillow"``、``"PyYAML"``）和
+    **包名**（``import`` 名，如 ``"PIL"``、``"yaml"``）：
+
+      - 优先按分发名直接查询：覆盖"包名==分发名"（如 ``pykunlun``）、
+        调用方已知分发名、以及 PEP 503 规范化等价名（``"pyyaml"`` ↔ ``"PyYAML"``）等场景；
+      - 若分发名查不到，再按包名做桥接（``"PIL"`` → ``"Pillow"``）；
+      - 两者都失败时抛出 :class:`PackageNotFoundError`。
 
     包未安装时直接抛出 PackageNotFoundError，不做静默回退。
     如果包代码能被执行（如 __init__.py），说明包已加载，
     若 metadata 仍找不到则说明安装有问题，报错有助于定位。
 
-    版本元数据在运行时不变，已通过 lru_cache 缓存避免重复磁盘 I/O；
-    PackageNotFoundError 不会被缓存，安装后重试仍可生效。
+    版本元数据在运行时不变，由 :func:`~pykunlun.util.cacheutil.cached` 缓存
+    （有效期 30 分钟）以避免重复磁盘 I/O；:class:`PackageNotFoundError` 不会被缓存
+    （异常直接抛出、不进入缓存），安装后重试仍可生效。
 
     Args:
-        package_name: 包名
+        name: 分发名或包名（``import`` 时用的名字）。
 
     Returns:
-        包的版本号
+        包的版本号。
 
     Raises:
-        PackageNotFoundError: 包未安装时抛出
+        PackageNotFoundError: 包未安装时抛出。
     """
-    return version(package_name)
+    # 1) 优先按分发名直接查：覆盖 包名==分发名 / 已知分发名 / PEP 503 规范化名 等场景
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        pass
+    # 2) 回退：按包名桥接到分发名（PIL → Pillow / bs4 → beautifulsoup4 / sklearn → scikit-learn）
+    dist = get_distribution_name(name)
+    if dist is None:
+        # 两种路径都失败：按"未安装"语义抛错，入参保持调用方原值以便定位
+        raise PackageNotFoundError(name)
+    return version(dist)
 
 
 # endregion
