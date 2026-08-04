@@ -6,6 +6,7 @@ Kunlun — 与具体业务无关的底层能力库。
 
 from . import envinfo
 from .core import (
+    CliContext,
     Command,
     CommandManager,
     CommandNotFoundError,
@@ -14,6 +15,7 @@ from .core import (
     HelpCommand,
     action,
     cli,
+    context_holder,
 )
 from .data import Cache, CacheManager, Masker, MaskManager, MemoryCache
 from .db import RdbCfg, RdbClient, RdbManager
@@ -39,6 +41,7 @@ __version__ = pkginfo.get_package_version(pkginfo.get_own_top_package_name())
 __all__ = [
     'Cache',
     'CacheManager',
+    'CliContext',
     'Command',
     'CommandManager',
     'CommandNotFoundError',
@@ -58,6 +61,7 @@ __all__ = [
     'action',
     'cacheutil',
     'cli',
+    'context_holder',
     'env_var',
     'envinfo',
     'fileutil',

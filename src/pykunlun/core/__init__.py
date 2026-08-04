@@ -6,10 +6,18 @@
 """
 
 from . import action, cli
-from .cli import Command, CommandManager, CommandNotFoundError, HelpCommand
+from .cli import (
+    CliContext,
+    Command,
+    CommandManager,
+    CommandNotFoundError,
+    HelpCommand,
+    context_holder,
+)
 from .ctxt import Context, ContextHolder
 
 __all__ = [
+    'CliContext',
     'Command',
     'CommandManager',
     'CommandNotFoundError',
@@ -18,4 +26,5 @@ __all__ = [
     'HelpCommand',
     'action',
     'cli',
+    'context_holder',
 ]
