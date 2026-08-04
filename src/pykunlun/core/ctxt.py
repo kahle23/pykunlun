@@ -8,8 +8,8 @@
     get/set/reset/using，按线程/asyncio Task 隔离。
 
 本模块只提供通用原语，不含任何 CLI 专有内容，也不持有「当前上下文」全局态——
-具体上下文形态（如命令行的 :class:`~pykunlun.core.cli.CliContext`）及其对应的
-``ContextHolder`` 实例由上层模块（如 :mod:`pykunlun.core.cli`）按需定义。
+具体上下文形态（如命令行的 :class:`~pykunlun.cli.CliContext`）及其对应的
+``ContextHolder`` 实例由上层模块（如 :mod:`pykunlun.cli`）按需定义。
 """
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ class ContextHolder(Generic[T]):
     泛型「当前值」容器：封装一个 ``ContextVar[T | None]``，提供 get/set/reset/using。
 
     每个实例对应一个独立的「当前 X」槽位（按线程、asyncio Task 各自隔离，互不串扰）。
-    上层按需 new 出自己的 holder——例如 :mod:`pykunlun.core.cli` 用它承载「当前
+    上层按需 new 出自己的 holder——例如 :mod:`pykunlun.cli` 用它承载「当前
     CliContext」。
 
     线程/异步安全由 ``contextvars`` 保证。
