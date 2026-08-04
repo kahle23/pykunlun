@@ -19,10 +19,12 @@ from . import (
 )
 from .cacheutil import cached
 from .maskutil import CommandPasswordMasker, EnvMasker
+from .pathutil import ResolveType
 
 __all__ = [
     'CommandPasswordMasker',
     'EnvMasker',
+    'ResolveType',
     'cached',
     'cacheutil',
     'fileutil',

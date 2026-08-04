@@ -13,6 +13,7 @@ import shutil
 from typing import IO
 
 from pykunlun.util import logutil, pathutil
+from pykunlun.util.pathutil import ResolveType
 
 log = logutil.getLogger(__name__)
 
@@ -144,67 +145,95 @@ def remove_suffix_dirs(base_dir: str, suffix: str, recursive: bool = False) -> i
 
 # region ======== 文件读取 ========
 
-def read_stream(file_path: str) -> IO[bytes]:
+def read_stream(file_path: str, *,
+                search_dirs: list[ResolveType] | None = None) -> IO[bytes]:
     """
     读取文件并返回字节 IO 流。
 
-    自动判断路径类型：
-    - 绝对路径：直接打开读取
-    - 相对路径：相对当前工作目录解析（等价于 ResolveType.CURRENT）后打开
+    自动判断路径类型并按 ``search_dirs`` 顺序解析：
+    - 绝对路径：直接打开读取（忽略 ``search_dirs``）
+    - 相对路径：按 ``search_dirs`` 顺序逐个拼接基准目录查找，首个存在的文件即打开
+        - ``None``（默认）：等价于 ``[ResolveType.CURRENT]``，即仅当前工作目录
+        - 显式传入：按列表顺序依次尝试；如需保留当前目录兜底，用户需自行将 ``CURRENT`` 写入列表
+        - 显式传入空列表：抛出 :class:`ValueError`（相对路径至少需要一个基准目录）
 
-    文件不存在时直接抛出 FileNotFoundError，不做静默处理。
+    所有候选位置均未命中时抛出 :class:`FileNotFoundError`，不做静默处理。
 
     注意：返回的文件句柄由调用方负责关闭（推荐配合 ``with`` 语句使用）。
 
     Args:
         file_path: 文件路径，可为绝对路径或相对路径。
+        search_dirs: 相对路径的基准目录解析顺序（仅相对路径生效，绝对路径忽略此参数）。
+            ``None`` 时默认 ``[ResolveType.CURRENT]``；显式传入则原样使用，不做隐式追加。
 
     Returns:
         以二进制读模式 ('rb') 打开的文件对象。
 
     Raises:
-        FileNotFoundError: 文件不存在时抛出。
+        ValueError: 相对路径但 ``search_dirs`` 显式传入空列表时抛出。
+        FileNotFoundError: 所有候选位置均未命中文件时抛出。
 
     Examples:
         >>> # 绝对路径直接读取
         >>> with read_stream("/etc/hosts") as f:
         ...     data = f.read()
-        >>> # 相对路径基于当前目录解析
+        >>> # 相对路径默认仅当前目录
         >>> with read_stream("config.ini") as f:
         ...     data = f.read()
+        >>> # 相对路径：当前目录优先，回退用户目录
+        >>> with read_stream("myapp.ini",
+        ...                  search_dirs=[ResolveType.CURRENT, ResolveType.USER]) as f:
+        ...     data = f.read()
     """
-    # 相对路径基于当前工作目录解析；绝对路径原样使用（pathutil.resolve_relative 仅接受相对路径）
-    if not os.path.isabs(file_path):
-        file_path = pathutil.resolve_relative(file_path, pathutil.ResolveType.CURRENT)
-    # 校验文件存在：区分"不存在/是目录"等异常情形，给出明确错误而非交由 open 抛模糊异常
-    if not os.path.isfile(file_path):
-        raise FileNotFoundError(f"文件不存在: {file_path}")
-    # 以二进制读模式打开，文件句柄交由调用方关闭（推荐配合 with 使用）
-    return open(file_path, "rb")
+    # search_dirs 归一化：None 默认当前目录
+    if search_dirs is None:
+        search_dirs = [ResolveType.CURRENT]
+
+    # 绝对路径：单候选，忽略 search_dirs；相对路径：按 search_dirs 拼接候选列表
+    if os.path.isabs(file_path):
+        candidates = [file_path]
+    else:
+        # 显式空列表 + 相对路径：无法解析，前置拦截
+        if not search_dirs:
+            raise ValueError("相对路径要求 search_dirs 非空")
+        candidates = [pathutil.resolve_relative(file_path, rt) for rt in search_dirs]
+
+    # 逐个候选判断，首个存在的文件即打开
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return open(candidate, "rb")
+
+    raise FileNotFoundError(f"文件不存在: {file_path}，已尝试: {', '.join(candidates)}")
 
 
-def read_text(file_path: str, encoding: str = "utf-8") -> str:
+def read_text(file_path: str, encoding: str = "utf-8", *,
+              search_dirs: list[ResolveType] | None = None) -> str:
     """
     读取文件并以字符串形式返回全部内容。
 
-    read_stream 的便捷包装，内部读取字节流后按指定编码解码为字符串，并自动关闭文件句柄。
+    :func:`read_stream` 的便捷包装，内部读取字节流后按指定编码解码为字符串，并自动关闭文件句柄。
+    ``search_dirs`` 参数语义同 :func:`read_stream`，原样透传。
 
     Args:
-        file_path: 文件路径，可为绝对路径或相对路径（相对当前目录）。
+        file_path: 文件路径，可为绝对路径或相对路径（按 ``search_dirs`` 解析）。
         encoding: 文本编码，默认为 utf-8。
+        search_dirs: 相对路径的基准目录解析顺序，详见 :func:`read_stream`。
 
     Returns:
         文件的字符串内容。
 
     Raises:
-        FileNotFoundError: 文件不存在时抛出。
+        ValueError: 相对路径但 ``search_dirs`` 显式传入空列表时抛出。
+        FileNotFoundError: 所有候选位置均未命中文件时抛出。
         UnicodeDecodeError: 按指定编码解码失败时抛出。
 
     Examples:
         >>> content = read_text("/etc/hosts")
         >>> content = read_text("config.ini")
+        >>> content = read_text("myapp.ini",
+        ...                     search_dirs=[ResolveType.CURRENT, ResolveType.USER])
     """
-    with read_stream(file_path) as f:
+    with read_stream(file_path, search_dirs=search_dirs) as f:
         return f.read().decode(encoding)
 
 

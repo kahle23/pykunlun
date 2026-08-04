@@ -734,12 +734,33 @@ class RdbManager:
     #: 默认实例名称
     DEFAULT_NAME = "default"
 
-    def __init__(self) -> None:
+    def __init__(self, config_loader: Callable[['RdbManager', str], None] | None = None) -> None:
+        """
+        Args:
+            config_loader: 配置加载器，当 :meth:`get_client` 按名称查找失败时调用。
+                签名 ``(manager: RdbManager, name: str) -> None``，
+                由 loader 自行决定加载策略（如一次性加载、按需加载等）。
+                为 ``None`` 时不启用 fallback。
+        """
         # 类注册表：db_type -> RdbClient 子类（用于按 cfg.db_type 工厂化创建实例）
         self._class_registry: dict[str, type[RdbClient]] = {}
         # 实例注册表：name -> RdbClient 实例（本实例独有）
         self._client_registry: dict[str, RdbClient] = {}
         self._lock = threading.RLock()
+        self._config_loader = config_loader
+
+    # endregion
+
+    # region ======== getter ========
+
+    def get_config_loader(self) -> Callable[['RdbManager', str], None] | None:
+        """
+        获取配置加载器。
+
+        Returns:
+            配置加载器 callable，未设置时返回 None。
+        """
+        return self._config_loader
 
     # endregion
 
@@ -940,6 +961,9 @@ class RdbManager:
         """
         获取指定名称的客户端实例。
 
+        若按名称未找到且已设置 :attr:`_config_loader`，会先调用配置加载器
+        （传入 manager 自身与请求的 name），再重新查找；仍未找到则抛出异常。
+
         Args:
             name: 实例名称，省略时使用 :attr:`DEFAULT_NAME`。
 
@@ -947,11 +971,14 @@ class RdbManager:
             :class:`RdbClient` 实例。
 
         Raises:
-            ValueError: 该名称尚未注册时抛出。
+            ValueError: 该名称尚未注册且配置加载器未能成功加载时抛出。
         """
         key = self._resolve_name(name)
         with self._lock:
             client = self._client_registry.get(key)
+            if client is None and self._config_loader is not None:
+                self._config_loader(self, key)
+                client = self._client_registry.get(key)
             if client is None:
                 registered = ", ".join(self._client_registry.keys()) or "（无）"
                 raise ValueError(
