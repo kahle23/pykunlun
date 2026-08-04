@@ -4,16 +4,16 @@
 
 ## 目录
 
-- [obj_ops - 对象操作模块](#1-obj_ops---对象操作模块)
+- [objutil - 对象操作模块](#1-objutil---对象操作模块)
 - [modutil 与 loadutil - 模块导入与数据加载工具](#2-modutil-与-loadutil---模块导入与数据加载工具)
 - [validation - 验证模块](#3-validation---验证模块)
 - [logutil - 日志工具模块](#4-logutil---日志工具模块)
-- [time_ops - 时间模块](#5-time_ops---时间模块)
+- [timeutil - 时间模块](#5-timeutil---时间模块)
 - [fileutil / pathutil - 文件与路径模块](#6-fileutil--pathutil---文件与路径模块)
 
 ---
 
-## 1. obj_ops - 对象操作模块
+## 1. objutil - 对象操作模块
 
 提供统一的接口来操作对象或字典的属性，适用于 JSON 反序列化后可能是 dict 也可能是对象的场景。
 
@@ -28,7 +28,7 @@
 ### 1.2 读取属性
 
 ```python
-from pykunlun.util.obj_ops import get_attr
+from pykunlun.util.objutil import get_attr
 
 # 对字典取值
 d = {"name": "张三"}
@@ -48,7 +48,7 @@ get_attr(None, "name", "未知")  # "未知"
 ### 1.3 设置与删除属性
 
 ```python
-from pykunlun.util.obj_ops import set_attr, del_attr
+from pykunlun.util.objutil import set_attr, del_attr
 
 # 字典
 d = {}
@@ -256,7 +256,7 @@ logutil.setup(config)   # 应早于任何 getLogger 调用
 
 ---
 
-## 5. time_ops - 时间模块
+## 5. timeutil - 时间模块
 
 提供日期时间相关的工具方法，支持多种格式自动识别和转换。
 
@@ -265,90 +265,90 @@ logutil.setup(config)   # 应早于任何 getLogger 调用
 自动识别多种日期时间格式，返回 `datetime` 对象。
 
 ```python
-from pykunlun.util import time_ops
+from pykunlun.util import timeutil
 
 # 解析标准格式
-dt = time_ops.parse("2024-01-15 14:30:00")
+dt = timeutil.parse("2024-01-15 14:30:00")
 
 # 解析 ISO 8601 格式
-dt = time_ops.parse("2024-01-15T14:30:00Z")
+dt = timeutil.parse("2024-01-15T14:30:00Z")
 
 # 解析中文格式
-dt = time_ops.parse("2024年01月15日 14时30分00秒")
+dt = timeutil.parse("2024年01月15日 14时30分00秒")
 
 # 解析英文格式
-dt = time_ops.parse("January 15, 2024 14:30:00")
+dt = timeutil.parse("January 15, 2024 14:30:00")
 
 # 解析失败返回 None
-dt = time_ops.parse("invalid date")
+dt = timeutil.parse("invalid date")
 ```
 
 ### 5.2 解析日期和时间
 
 ```python
-from pykunlun.util import time_ops
+from pykunlun.util import timeutil
 
 # 提取日期部分
-d = time_ops.parse_date("2024-01-15 14:30:00")  # 返回 date 对象
+d = timeutil.parse_date("2024-01-15 14:30:00")  # 返回 date 对象
 
 # 提取时间部分
-t = time_ops.parse_time("2024-01-15 14:30:00")  # 返回 time 对象
+t = timeutil.parse_time("2024-01-15 14:30:00")  # 返回 time 对象
 ```
 
 ### 5.3 格式化时间对象
 
 ```python
-from pykunlun.util import time_ops
+from pykunlun.util import timeutil
 from datetime import datetime, date
 
 # 格式化 datetime 对象
 dt = datetime.now()
-result = time_ops.format(dt)  # 默认格式: "%Y-%m-%d %H:%M:%S"
-result = time_ops.format(dt, fmt="%Y/%m/%d %H:%M")
+result = timeutil.format(dt)  # 默认格式: "%Y-%m-%d %H:%M:%S"
+result = timeutil.format(dt, fmt="%Y/%m/%d %H:%M")
 
 # 格式化 date 对象
 d = date.today()
-result = time_ops.format(d, fmt="%Y年%m月%d日")
+result = timeutil.format(d, fmt="%Y年%m月%d日")
 
 # 格式化 None 返回 None
-result = time_ops.format(None)  # None
+result = timeutil.format(None)  # None
 ```
 
 ### 5.4 解析并格式化字符串
 
 ```python
-from pykunlun.util import time_ops
+from pykunlun.util import timeutil
 
 # 解析后按指定格式输出
-result = time_ops.format_str("2024-01-15 14:30:00", fmt="%Y/%m/%d")
+result = timeutil.format_str("2024-01-15 14:30:00", fmt="%Y/%m/%d")
 # 输出: "2024/01/15"
 
-result = time_ops.format_str("January 15, 2024", fmt="%Y-%m-%d")
+result = timeutil.format_str("January 15, 2024", fmt="%Y-%m-%d")
 # 输出: "2024-01-15"
 ```
 
 ### 5.5 管理时间格式
 
 ```python
-from pykunlun.util import time_ops
+from pykunlun.util import timeutil
 
 # 获取所有支持的格式
-formats = time_ops.get_formats()
+formats = timeutil.get_formats()
 
 # 添加自定义格式
-time_ops.add_format("%Y年%m月%d日")
+timeutil.add_format("%Y年%m月%d日")
 
 # 删除格式
-time_ops.remove_format("%Y年%m月%d日")
+timeutil.remove_format("%Y年%m月%d日")
 
 # 获取格式解析统计
-stats = time_ops.get_format_stats()
+stats = timeutil.get_format_stats()
 
 # 重置统计
-time_ops.reset_format_stats()
+timeutil.reset_format_stats()
 
 # 根据使用频率重新排序格式（提高解析效率）
-time_ops.reorder_formats()
+timeutil.reorder_formats()
 ```
 
 ### 5.6 支持的格式示例
@@ -474,14 +474,14 @@ validation.check_required_fields_not_empty(
 ### 示例 2：动态导入并处理时间
 
 ```python
-from pykunlun.util import modutil, time_ops
+from pykunlun.util import modutil, timeutil
 
 # 动态导入 pandas
 pd = modutil.import_module("pandas")
 
 # 解析时间字符串
 date_str = "2024年01月15日"
-dt = time_ops.parse(date_str)
+dt = timeutil.parse(date_str)
 
 # 转换为 pandas Timestamp
 timestamp = pd.Timestamp(dt)

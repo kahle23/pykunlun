@@ -2,79 +2,12 @@
 Kunlun — 与具体业务无关的底层能力库。
 
 承载跨平台、跨业务的通用抽象与基础设施，不依赖上层应用包。上层包按需在此之上扩展具体实现。
+
+导入约定：本包不通过顶级命名空间 re-export 任何符号，请按子包/子模块路径导入，
+例如 ``from pykunlun.util import timeutil``、``from pykunlun.core import action``。
 """
 
-from . import envinfo
-from .core import (
-    CliContext,
-    Command,
-    CommandManager,
-    CommandNotFoundError,
-    Context,
-    ContextHolder,
-    HelpCommand,
-    action,
-    cli,
-    context_holder,
-)
-from .data import Cache, CacheManager, Masker, MaskManager, MemoryCache
-from .db import RdbCfg, RdbClient, RdbManager
-from .envinfo import osenv, pkginfo, pyinfo
-from .system import EnvVarManager, EnvVarService, env_var, pip
-from .util import (
-    cacheutil,
-    fileutil,
-    loadutil,
-    logutil,
-    maskutil,
-    modutil,
-    objutil,
-    pathutil,
-    timeutil,
-    validation,
-)
-from .util.maskutil import CommandPasswordMasker, EnvMasker
+from importlib.metadata import version
 
 # 不捕获 PackageNotFoundError：能执行到此处说明包已加载，版本缺失应报错而非静默回退
-__version__ = pkginfo.get_package_version(pkginfo.get_own_top_package_name())
-
-__all__ = [
-    'Cache',
-    'CacheManager',
-    'CliContext',
-    'Command',
-    'CommandManager',
-    'CommandNotFoundError',
-    'CommandPasswordMasker',
-    'Context',
-    'ContextHolder',
-    'EnvMasker',
-    'EnvVarManager',
-    'EnvVarService',
-    'HelpCommand',
-    'MaskManager',
-    'Masker',
-    'MemoryCache',
-    'RdbCfg',
-    'RdbClient',
-    'RdbManager',
-    'action',
-    'cacheutil',
-    'cli',
-    'context_holder',
-    'env_var',
-    'envinfo',
-    'fileutil',
-    'loadutil',
-    'logutil',
-    'maskutil',
-    'modutil',
-    'objutil',
-    'osenv',
-    'pathutil',
-    'pip',
-    'pkginfo',
-    'pyinfo',
-    'timeutil',
-    'validation',
-]
+__version__ = version("pykunlun")
