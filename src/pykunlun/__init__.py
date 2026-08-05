@@ -10,4 +10,4 @@ Kunlun — 与具体业务无关的底层能力库。
 from importlib.metadata import version
 
 # 不捕获 PackageNotFoundError：能执行到此处说明包已加载，版本缺失应报错而非静默回退
-__version__ = version("pykunlun")
+__version__ = version(__name__)
