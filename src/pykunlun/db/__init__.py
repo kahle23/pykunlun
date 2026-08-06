@@ -1,21 +1,23 @@
 """
 数据库相关抽象模块。
 
-提供关系型数据库的驱动策略抽象与注册机制，按子模块组织。
+提供关系型数据库的驱动策略抽象与注册机制，按子包组织。
 各抽象的具体实现由上层包提供；基于标准库的实现（如 SQLite）内置于此。
 
 当前包含：
-  - 关系型数据库驱动（:mod:`pykunlun.db.rdb`）
-  - 基于标准库的内置实现（:mod:`pykunlun.db.rdb_builtin`，如 SQLite）
+
+  - 关系型数据库驱动（:mod:`pykunlun.db.rdb`，含 SQLite 内置实现）
+
+每个子包内部按职责拆分为多个模块：配置、抽象基类、只读代理、管理器、内置实现等。
 后续可扩展 KV、向量库等。
 """
 
-from .rdb import RdbCfg, RdbClient, RdbManager
-from .rdb_builtin import SqliteClient
+from .rdb import RdbCfg, RdbClient, RdbManager, RdbReadOnlyClient, SqliteClient
 
 __all__ = [
     'RdbCfg',
     'RdbClient',
     'RdbManager',
+    'RdbReadOnlyClient',
     'SqliteClient',
 ]
