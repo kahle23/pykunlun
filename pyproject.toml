@@ -46,6 +46,7 @@ ignore = [
     "BLE001",  # 盲异常：与 S110 重叠的工具库资源清理场景
     "DTZ005",  # datetime.now() 无 tz：工具库默认使用 naive datetime
     "DTZ007",  # strptime 无 %z：同上
+    "DTZ001",  # datetime() 构造无 tz：同上，naive datetime 为全项目约定
     # PIE790：不必要的 pass 语句
     # 抽象方法、空实现方法、异常子类等场景显式保留 pass，更直观表达
     # "此处为空占位/待子类实现" 的意图，与 docstring 配合可读性更好。
