@@ -1,8 +1,9 @@
 """
-关系型数据库驱动客户端管理器（双层注册表：类 + 实例）。
+关系型数据库驱动客户端管理器（三层注册表：client 类 + client 实例 + 备份服务）。
 
-:class:`RdbManager` 维护 ``db_type -> RdbClient 子类`` 的类注册表与
-``name -> RdbClient 实例`` 的实例注册表，按数据库类型/别名工厂化创建与获取客户端实例。
+:class:`RdbManager` 维护三张注册表：``db_type -> RdbClient 子类`` 的类注册表、
+``name -> RdbClient 实例`` 的实例注册表，以及 ``db_type -> RdbBackupService 实例`` 的备份服务注册表。
+前两者用于按数据库类型/别名工厂化创建与获取客户端实例，后者用于 dump/restore 转发。
 """
 
 import threading
@@ -11,6 +12,7 @@ from typing import Any
 
 from pykunlun.util import logutil
 
+from .backup import RdbBackupResult, RdbBackupService
 from .cfg import RdbCfg
 from .client import RdbClient
 from .readonly import RdbReadOnlyClient
@@ -43,6 +45,14 @@ class RdbManager:
 
     本类额外提供 :meth:`get_connection`、:meth:`query`、:meth:`execute` 便捷方法，
     比直接调用 :class:`RdbClient` 同名方法多一个 ``name`` 参数（用于选择已注册的实例），其余参数语义一致。
+
+    此外，本管理器还维护一张**备份服务注册表** ``db_type -> RdbBackupService``：通过 :meth:`register_backup_service`
+    注册各数据库类型的 :class:`RdbBackupService` 实例后，即可用 :meth:`dump` / :meth:`restore` 便捷方法
+    直接备份/恢复。与 query/execute 不同，dump/restore **直接接收 :class:`RdbCfg` 作参数**（而非
+    ``name``）：用 ``cfg.db_type`` 查备份服务后把 cfg 透传执行。这是因为 query/execute 依赖一条已建立的
+    连接（client 实例绑定 cfg，用 name 索引），而 dump/restore 是一次性命令行操作，cfg 仅作输入参数、
+    无需预先建 client。对 ``cfg.read_only=True`` 的配置，:meth:`restore` 会被拒绝（只读库不可写），
+    :meth:`dump` 不受限（导出数据不修改源库）。
 
     用法示例::
 
@@ -83,6 +93,8 @@ class RdbManager:
         self._class_registry: dict[str, type[RdbClient]] = {}
         # 实例注册表：name -> RdbClient 实例（本实例独有）
         self._client_registry: dict[str, RdbClient] = {}
+        # 备份服务注册表：db_type -> RdbBackupService 实例（按 db_type 工厂化获取备份服务）
+        self._backup_registry: dict[str, RdbBackupService] = {}
         self._lock = threading.RLock()
         self._config_loader = config_loader
 
@@ -336,6 +348,88 @@ class RdbManager:
 
     # endregion
 
+    # region ======== 备份服务注册表（db_type -> RdbBackupService 实例） ========
+
+    def register_backup_service(self, service: RdbBackupService) -> None:
+        """
+        注册或替换一个备份服务（按服务自身的 :attr:`~RdbBackupService.db_type` 归档）。
+
+        注册后即可通过 :meth:`dump` / :meth:`restore` 直接备份/恢复该类型数据库，
+        无需手动持有备份服务实例。
+
+        Args:
+            service: :class:`RdbBackupService` 实例。
+
+        Raises:
+            ValueError: 服务的 :attr:`~RdbBackupService.db_type` 为空时抛出。
+        """
+        db_type = getattr(service, 'db_type', None)
+        if not isinstance(db_type, str) or not db_type:
+            raise ValueError(
+                f"{type(service).__name__}.db_type 必须是非空字符串，"
+                f"当前值: {db_type!r}"
+            )
+        key = db_type.lower()
+        with self._lock:
+            self._backup_registry[key] = service
+
+    def unregister_backup_service(self, db_type: str) -> bool:
+        """
+        取消注册指定类型的备份服务。
+
+        Args:
+            db_type: 数据库类型标识（大小写不敏感）。
+
+        Returns:
+            是否成功移除。
+        """
+        if not isinstance(db_type, str) or not db_type:
+            return False
+        key = db_type.lower()
+        with self._lock:
+            if key in self._backup_registry:
+                del self._backup_registry[key]
+                return True
+            return False
+
+    def get_backup_service(self, db_type: str) -> RdbBackupService:
+        """
+        获取指定类型的备份服务。
+
+        Args:
+            db_type: 数据库类型标识（大小写不敏感）。
+
+        Returns:
+            :class:`RdbBackupService` 实例。
+
+        Raises:
+            ValueError: 不支持的数据库类型时抛出。
+        """
+        if not isinstance(db_type, str) or not db_type:
+            raise ValueError("db_type 不能为空")
+        key = db_type.lower()
+        with self._lock:
+            service = self._backup_registry.get(key)
+            if service is None:
+                supported = ", ".join(self._backup_registry.keys()) or "（无）"
+                raise ValueError(
+                    f"不支持的数据库类型: {db_type}，已注册的备份类型: {supported}；"
+                    f"请先通过 register_backup_service() 注册"
+                )
+            return service
+
+    def get_registered_backup_types(self) -> list[str]:
+        """
+        获取所有已注册备份服务的数据库类型列表。
+
+        Returns:
+            数据库类型标识列表。
+        """
+        with self._lock:
+            return list(self._backup_registry.keys())
+
+    # endregion
+
     # region ======== 执行便捷方法（透传 RdbClient） ========
 
     def get_connection(self, name: str | None = None):
@@ -395,5 +489,82 @@ class RdbManager:
             受影响的行数。
         """
         return self.get_client(name).execute(sql, params)
+
+    # endregion
+
+    # region ======== 备份/恢复便捷方法（透传 RdbBackupService，cfg 作参数） ========
+
+    def dump(
+        self,
+        cfg: RdbCfg,
+        output_path: str,
+        tables: list[str] | None = None,
+        schema_only: bool = False,
+        compress: bool = True,
+        verbose: bool = False,
+        timeout: int | None = None,
+    ) -> RdbBackupResult:
+        """
+        执行数据库备份（透传 :meth:`RdbBackupService.dump`）。
+
+        与 :meth:`query` / :meth:`execute` 不同，本方法**直接接收 :class:`RdbCfg` 作参数**
+        （而非 ``name``）：用 ``cfg.db_type`` 从备份服务注册表取出 :class:`RdbBackupService` 实例，
+        再把 cfg 透传给 :meth:`RdbBackupService.dump` 执行。这是因为备份是一次性命令行操作，
+        cfg 仅作输入参数，无需预先建立 client 连接。
+
+        不受 ``cfg.read_only`` 限制（导出数据不修改源库，只读库也可备份）。
+
+        Args:
+            cfg: 数据库配置（``cfg.db_type`` 决定用哪个备份服务）。
+            output_path: 输出文件路径。
+            tables: 只备份指定的表。
+            schema_only: 只备份结构，不备份数据。
+            compress: 是否 gzip 压缩。
+            verbose: 是否显示详细输出（命令与环境变量自动脱敏）。
+            timeout: 命令执行超时秒数，``None`` 用备份服务默认值。
+
+        Returns:
+            :class:`RdbBackupResult` 备份结果。
+        """
+        db_type = cfg.db_type
+        if not db_type:
+            raise ValueError(
+                f"备份操作要求 cfg.db_type 不能为空：{cfg.database!r}"
+            )
+        return self.get_backup_service(db_type).dump(
+            cfg, output_path, tables, schema_only, compress, verbose, timeout
+        )
+
+    def restore(
+        self, cfg: RdbCfg, input_path: str, verbose: bool = False, timeout: int | None = None
+    ) -> RdbBackupResult:
+        """
+        从备份文件恢复数据库（透传 :meth:`RdbBackupService.restore`）。
+
+        与 :meth:`dump` 同样直接接收 :class:`RdbCfg` 作参数。**对 ``cfg.read_only=True``
+        的配置拒绝执行**（恢复是写操作，只读库不可写）；dump 则不受只读限制（导出数据不修改源库）。
+
+        Args:
+            cfg: 数据库配置（``cfg.db_type`` 决定用哪个备份服务）。
+            input_path: 备份文件路径。
+            verbose: 是否显示详细输出（命令与环境变量自动脱敏）。
+            timeout: 命令执行超时秒数，``None`` 用备份服务默认值。
+
+        Returns:
+            :class:`RdbBackupResult` 恢复结果（成功时 ``output_path`` 为空）。
+
+        Raises:
+            ValueError: ``cfg.read_only`` 为 True 时抛出（只读配置禁止恢复）。
+        """
+        if cfg.read_only:
+            raise ValueError(
+                f"配置为只读（read_only=True），禁止恢复操作：{cfg.database!r}"
+            )
+        db_type = cfg.db_type
+        if not db_type:
+            raise ValueError(
+                f"恢复操作要求 cfg.db_type 不能为空：{cfg.database!r}"
+            )
+        return self.get_backup_service(db_type).restore(cfg, input_path, verbose, timeout)
 
     # endregion
