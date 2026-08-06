@@ -17,7 +17,7 @@ from importlib.metadata import (
     version,
 )
 
-from pykunlun.util import cached
+from pykunlun.util.cacheutil import cached
 
 # 本库顶级包名：用于自身识别（如 python -m pykunlun 场景），避免在多处硬编码 "pykunlun"
 _PACKAGE_NAME = __name__.split('.')[0]

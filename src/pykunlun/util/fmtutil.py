@@ -43,6 +43,8 @@ def format_bytes(size: float, unit: ByteUnit | str | None = None) -> str:
             if size < 1024 or u is _MAX_UNIT:
                 return f"{size:.1f} {u.name}"
             size /= 1024
+        # _MAX_UNIT 保证上面循环必定 return，此行逻辑上不可达
+        raise RuntimeError("format_bytes 自动推断未收敛")
 
     # 归一化为 ByteUnit
     if isinstance(unit, str):

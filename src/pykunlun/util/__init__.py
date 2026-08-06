@@ -7,6 +7,7 @@
 
 from . import (
     cacheutil,
+    cmdutil,
     fileutil,
     fmtutil,
     loadutil,
@@ -28,6 +29,7 @@ __all__ = [
     'ResolveType',
     'cached',
     'cacheutil',
+    'cmdutil',
     'fileutil',
     'fmtutil',
     'loadutil',
