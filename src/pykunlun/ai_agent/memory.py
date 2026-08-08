@@ -40,6 +40,14 @@ VALID_CATEGORIES: frozenset[str] = frozenset({
     'file-path', 'convention', 'decision', 'quirk', 'no-go', 'history', 'other',
 })
 
+#: 默认按"本机绑定"去重的 category 集合（remember 去重维度的自动判定依据）。
+#:
+#: 含义：这些 category 的事实天然与具体机器相关（如绝对路径在不同机器上不同），
+#: remember 命中同 scope+title 时只在**同 machine** 内判重，跨机各自可记一份。
+#: 集合外的 category 视为跨机通用，按 scope+title 全局判重（A 机记过 B 机不再记）。
+#: 由 CLI 的 ``--dedup`` 参数显式覆盖（auto/​machine/​global）。
+PATH_LIKE_CATEGORIES: frozenset[str] = frozenset({'file-path'})
+
 #: recall 分词时的停用词（中英文虚词/高频噪声词）
 _STOPWORDS: frozenset[str] = frozenset({
     '的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一',
@@ -145,6 +153,13 @@ class MemoryRecord:
             无人（None）则为共享数据。由 :meth:`MemoryStore.remember` 按角色盖章。
         owner_group: 所有者所属团队/组（标签字段，**不参与鉴权**），用于团队归类与筛选。
             例如共享记忆可标 ``owner=None, owner_group='backend'`` 表示 backend 团队的共享池。
+        machine: 记忆所属的物理机标识（标签字段，**不参与鉴权**）。用于多台机器共用同一记忆库
+            时标注"本条事实绑定哪台机"——尤其路径类记忆（绝对路径）只对对应机器有意义。
+            由 :meth:`MemoryStore.remember` 按注入优先级盖章；recall 不按此字段过滤，
+            仅供 AI 在结果中自判适用性。None 表示"未标识/通用"。
+        agent_name: 沉淀本条记忆的 agent 外壳标识（如 ``opencode`` / ``codex`` / ``claude-code``）。
+            纯标签字段，**不参与鉴权与过滤**，仅记录"哪个 agent 沉淀的"。由 remember 按注入
+            优先级盖章；无自动探测源，未配置则为 None。
         keywords: 逗号分隔的关键词/标签，用于模糊检索与加权。
         source: 来源（user-told / code-derived / inferred），见 :data:`VALID_SOURCES`。
         confidence: 置信度 0~100，默认 80。
@@ -162,6 +177,8 @@ class MemoryRecord:
     content: str
     owner: str | None = None
     owner_group: str | None = None
+    machine: str | None = None
+    agent_name: str | None = None
     keywords: str = ''
     source: str = 'user-told'
     confidence: int = 80
@@ -219,6 +236,16 @@ class MemoryStore(ABC):
         """当前绑定的团队/组（标签）；None 表示未设置。"""
         return None
 
+    @property
+    def machine(self) -> str | None:
+        """当前绑定的物理机标识（标签）；None 表示未标识/通用。"""
+        return None
+
+    @property
+    def agent_name(self) -> str | None:
+        """当前绑定的 agent 外壳标识（标签）；None 表示未标识。"""
+        return None
+
     @abstractmethod
     def init_store(self) -> None:
         """初始化存储（幂等）：RDB 后端建表，内存后端为 noop。首次使用前调用。"""
@@ -230,9 +257,11 @@ class MemoryStore(ABC):
 
         - 正常角色：盖 ``owner`` = 当前身份，``owner_group`` = 当前组（标签）。
         - 共享角色：``owner`` 置空（→ 共享记忆），``owner_group`` 仍盖当前组。
+        - ``machine`` / ``agent_name``：始终盖当前绑定值（record 显式给非 None 值时保留之）。
 
         Args:
-            record: 待记的记忆（id 通常为 None；owner/owner_group 留空时由本方法盖章）。
+            record: 待记的记忆（id 通常为 None；owner/owner_group/machine/agent_name
+                留空时由本方法盖章）。
             shared_mode: 是否为共享角色（共享角色下生成共享记忆）。
 
         Returns:
@@ -280,8 +309,17 @@ class MemoryStore(ABC):
         title: str,
         include_deleted: bool = False,
         shared_mode: bool = False,
+        machine_bound: bool = False,
     ) -> list[MemoryRecord]:
-        """按 scope+title 精确查找（在当前角色可见范围内；remember 去重用）。"""
+        """按 scope+title 精确查找（在当前角色可见范围内；remember 去重用）。
+
+        Args:
+            machine_bound: 是否按本机隔离判重。True 则 WHERE 追加 ``AND machine = <当前machine>``，
+                即仅同 scope+title+同 machine 视为重复（路径类跨机各记一份的语义）；
+                False 则仅按 scope+title 全局判重（跨机通用知识共享的语义）。
+                当前机器标识（``self.machine``）为空时，True 自动退化为 False（无 machine
+                可绑定时按全局判重更安全）。
+        """
 
     @abstractmethod
     def update(self, id: int, fields: dict[str, Any], shared_mode: bool = False) -> bool:
@@ -443,9 +481,11 @@ class MemoryManager:
         include_deleted: bool = False,
         name: str | None = None,
         shared_mode: bool = False,
+        machine_bound: bool = False,
     ) -> list[MemoryRecord]:
         return self.get_store(name).find_by_scope_title(
-            scope, title, include_deleted=include_deleted, shared_mode=shared_mode)
+            scope, title, include_deleted=include_deleted,
+            shared_mode=shared_mode, machine_bound=machine_bound)
 
     def update(
         self,

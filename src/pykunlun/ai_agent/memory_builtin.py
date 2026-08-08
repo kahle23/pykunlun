@@ -51,6 +51,8 @@ class SqliteMemoryStore(MemoryStore):
             下每次连接彼此隔离、数据不跨连接留存；测试请使用临时文件。
         owner: 当前身份（用户标识）；None 表示无身份。正常角色下仅可读/写自己的 + 读共享。
         owner_group: 当前团队/组（标签，仅用于 remember 盖章，不参与鉴权）。
+        machine: 当前物理机标识（标签，仅用于 remember 盖章 + machine_bound 去重，不参与鉴权）。
+        agent_name: 当前 agent 外壳标识（标签，仅用于 remember 盖章，不参与鉴权）。
         table: 记忆表名（默认 ``ai_memory``）。
     """
 
@@ -61,6 +63,8 @@ class SqliteMemoryStore(MemoryStore):
         db_path: str,
         owner: str | None = None,
         owner_group: str | None = None,
+        machine: str | None = None,
+        agent_name: str | None = None,
         table: str = 'ai_memory',
     ) -> None:
         if db_path == ':memory:':
@@ -71,6 +75,8 @@ class SqliteMemoryStore(MemoryStore):
         self._db_path = db_path
         self._owner = owner if (owner is not None and owner.strip()) else None
         self._owner_group = owner_group
+        self._machine = machine if (machine is not None and machine.strip()) else None
+        self._agent_name = agent_name if (agent_name is not None and agent_name.strip()) else None
         self._table = table
 
     @property
@@ -84,6 +90,14 @@ class SqliteMemoryStore(MemoryStore):
     @property
     def owner_group(self) -> str | None:
         return self._owner_group
+
+    @property
+    def machine(self) -> str | None:
+        return self._machine
+
+    @property
+    def agent_name(self) -> str | None:
+        return self._agent_name
 
     @property
     def table(self) -> str:
@@ -127,6 +141,8 @@ class SqliteMemoryStore(MemoryStore):
             content TEXT,
             owner TEXT,
             owner_group TEXT,
+            machine TEXT,
+            agent_name TEXT,
             keywords TEXT DEFAULT '',
             source TEXT DEFAULT 'user-told',
             confidence INTEGER DEFAULT 80,
@@ -137,10 +153,22 @@ class SqliteMemoryStore(MemoryStore):
             created_at TEXT,
             updated_at TEXT
         )""")
+        self._migrate()  # 老库补列；新库本就有，幂等。必须在创建索引前（索引依赖新列）
         self._execute(f'CREATE INDEX IF NOT EXISTS idx_{t}_scope_del ON {t} (scope, is_deleted)')
         self._execute(f'CREATE INDEX IF NOT EXISTS idx_{t}_scope_cat ON {t} (scope, category)')
         self._execute(f'CREATE INDEX IF NOT EXISTS idx_{t}_owner_del ON {t} (owner, is_deleted)')
+        self._execute(f'CREATE INDEX IF NOT EXISTS idx_{t}_machine_del ON {t} (machine, is_deleted)')
         log.info("SqliteMemoryStore 已初始化表 %s (db=%s)", t, self._db_path)
+
+    def _migrate(self) -> None:
+        """幂等迁移：补齐老库缺失的 machine/agent_name 列（CREATE TABLE IF NOT EXISTS
+        不会改已存在的表结构，故老库需靠此方法补列）。"""
+        rows = self._query(f'PRAGMA table_info({self._table})')
+        existing = {r['name'] for r in rows}
+        if 'machine' not in existing:
+            self._execute(f'ALTER TABLE {self._table} ADD COLUMN machine TEXT')
+        if 'agent_name' not in existing:
+            self._execute(f'ALTER TABLE {self._table} ADD COLUMN agent_name TEXT')
 
     # endregion
 
@@ -157,14 +185,21 @@ class SqliteMemoryStore(MemoryStore):
             record.owner = None
         elif record.owner is None:
             record.owner = self._owner
+        # machine / agent_name：始终盖当前绑定值（record 显式给非 None 时保留之）
+        if record.machine is None:
+            record.machine = self._machine
+        if record.agent_name is None:
+            record.agent_name = self._agent_name
         sql = (f'INSERT INTO {t} (scope, category, title, content, owner, owner_group, '
-               f'keywords, source, confidence, pinned, use_count, last_used_at, is_deleted, '
-               f'created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+               f'machine, agent_name, keywords, source, confidence, pinned, use_count, '
+               f'last_used_at, is_deleted, created_at, updated_at) '
+               f'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
         params = (
             record.scope, record.category, record.title, record.content,
-            record.owner, record.owner_group, record.keywords, record.source,
-            record.confidence, record.pinned, record.use_count,
-            _iso(record.last_used_at or now), record.is_deleted, _iso(now), _iso(now),
+            record.owner, record.owner_group, record.machine, record.agent_name,
+            record.keywords, record.source, record.confidence, record.pinned,
+            record.use_count, _iso(record.last_used_at or now), record.is_deleted,
+            _iso(now), _iso(now),
         )
         conn = self._connect()
         try:
@@ -226,11 +261,16 @@ class SqliteMemoryStore(MemoryStore):
         title: str,
         include_deleted: bool = False,
         shared_mode: bool = False,
+        machine_bound: bool = False,
     ) -> list[MemoryRecord]:
         vis_sql, vis_params = visibility_clause(shared_mode, self._owner, '?')
         params: list[Any] = [scope, title]
         params.extend(vis_params)
         where = f'scope = ? AND title = ? AND {vis_sql}'
+        # machine_bound 且当前有 machine 绑定时，追加本机隔离条件（self._machine 为空则退化忽略）
+        if machine_bound and self._machine:
+            where += ' AND machine = ?'
+            params.append(self._machine)
         if not include_deleted:
             where += ' AND is_deleted = 0'
         rows = self._query(f'SELECT * FROM {self._table} WHERE {where}', tuple(params))

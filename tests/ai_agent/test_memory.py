@@ -360,3 +360,140 @@ def test_no_identity_cannot_touch_others_personal(store_path):
     assert anon.forget(a_own) is False
 
 # endregion
+
+
+# region ======== machine / agent_name 盖章 ========
+
+def test_remember_stamps_machine_and_agent(store_path):
+    """remember 自动盖 machine/agent_name 章（构造时绑定）。"""
+    s = SqliteMemoryStore(store_path, owner='alice', machine='pc-a', agent_name='opencode')
+    s.init_store()
+    rid = s.remember(MemoryRecord(scope='app', category='other', title='T', content='c'))
+    rec = s.get(rid)
+    assert rec.machine == 'pc-a'
+    assert rec.agent_name == 'opencode'
+
+
+def test_remember_keeps_explicit_machine_agent(store_path):
+    """record 显式给 machine/agent_name 时保留之，不被构造绑定值覆盖。"""
+    s = SqliteMemoryStore(store_path, owner='alice', machine='pc-a', agent_name='opencode')
+    s.init_store()
+    rid = s.remember(MemoryRecord(scope='app', category='other', title='T', content='c',
+                                  machine='pc-b', agent_name='codex'))
+    rec = s.get(rid)
+    assert rec.machine == 'pc-b'
+    assert rec.agent_name == 'codex'
+
+
+def test_remember_no_machine_no_agent(store_path):
+    """未绑定 machine/agent_name 时，盖章为 None。"""
+    s = SqliteMemoryStore(store_path)
+    s.init_store()
+    rid = s.remember(MemoryRecord(scope='app', category='other', title='T', content='c'))
+    rec = s.get(rid)
+    assert rec.machine is None
+    assert rec.agent_name is None
+
+
+def test_remember_strips_blank_machine(store_path):
+    """纯空白 machine/agent_name 归一为 None（避免 ' ' 残留）。"""
+    s = SqliteMemoryStore(store_path, machine='   ', agent_name='')
+    s.init_store()
+    rid = s.remember(MemoryRecord(scope='app', category='other', title='T', content='c'))
+    rec = s.get(rid)
+    assert rec.machine is None
+    assert rec.agent_name is None
+
+# endregion
+
+
+# region ======== find_by_scope_title 去重三态（machine_bound）======
+
+def test_dedup_machine_bound_isolates_by_machine(store_path):
+    """machine_bound=True：同 scope+title 跨 machine 不判重（路径类语义）。"""
+    a = SqliteMemoryStore(store_path, owner='alice', machine='pc-a')
+    a.init_store()
+    a.remember(MemoryRecord(scope='app', category='file-path', title='项目根', content='E:\\mine'))
+    # pc-b 查同样 scope+title，machine_bound=True 应不命中 pc-a 的记录
+    b = SqliteMemoryStore(store_path, owner='alice', machine='pc-b')
+    assert b.find_by_scope_title('app', '项目根', machine_bound=True) == []
+
+
+def test_dedup_machine_bound_matches_same_machine(store_path):
+    """machine_bound=True：同 machine 下同 scope+title 判重。"""
+    a = SqliteMemoryStore(store_path, owner='alice', machine='pc-a')
+    a.init_store()
+    a.remember(MemoryRecord(scope='app', category='file-path', title='项目根', content='E:\\mine'))
+    dups = a.find_by_scope_title('app', '项目根', machine_bound=True)
+    assert len(dups) == 1
+
+
+def test_dedup_global_shared_across_machines(store_path):
+    """machine_bound=False（默认）：同 scope+title 跨 machine 判重（通用知识语义）。"""
+    a = SqliteMemoryStore(store_path, owner='alice', machine='pc-a')
+    a.init_store()
+    a.remember(MemoryRecord(scope='app', category='convention', title='用 Hutool', content='...'))
+    b = SqliteMemoryStore(store_path, owner='alice', machine='pc-b')
+    # 默认全局判重，能查到 pc-a 那条
+    dups = b.find_by_scope_title('app', '用 Hutool')
+    assert len(dups) == 1
+    assert dups[0].machine == 'pc-a'
+
+
+def test_dedup_machine_bound_falls_back_when_no_machine(store_path):
+    """machine_bound=True 但当前 store 未绑定 machine：退化为全局判重。"""
+    a = SqliteMemoryStore(store_path, owner='alice')  # 无 machine
+    a.init_store()
+    a.remember(MemoryRecord(scope='app', category='file-path', title='T', content='x'))
+    dups = a.find_by_scope_title('app', 'T', machine_bound=True)
+    assert len(dups) == 1  # 退化：能查到自己刚记的
+
+# endregion
+
+
+# region ======== 老库迁移（_migrate 补列）======
+
+def test_migrate_adds_columns_to_legacy_table(store_path):
+    """建一个老式（无 machine/agent_name 列）的表，init_store 应补齐列且不丢老数据。"""
+    import sqlite3
+    conn = sqlite3.connect(store_path)
+    conn.execute("""CREATE TABLE ai_memory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scope TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL, content TEXT,
+        owner TEXT, owner_group TEXT, keywords TEXT DEFAULT '',
+        source TEXT DEFAULT 'user-told', confidence INTEGER DEFAULT 80, pinned INTEGER DEFAULT 0,
+        use_count INTEGER DEFAULT 0, last_used_at TEXT, is_deleted INTEGER DEFAULT 0,
+        created_at TEXT, updated_at TEXT
+    )""")
+    conn.execute("INSERT INTO ai_memory (scope, category, title, content) "
+                 "VALUES ('app','other','old','x')")
+    conn.commit()
+    conn.close()
+
+    s = SqliteMemoryStore(store_path)
+    s.init_store()  # 应触发 _migrate 补列
+
+    cols = {r['name'] for r in s._query('PRAGMA table_info(ai_memory)')}
+    assert 'machine' in cols
+    assert 'agent_name' in cols
+    # 老数据未丢，machine 为 NULL
+    dups = s.find_by_scope_title('app', 'old')
+    assert len(dups) == 1
+    assert dups[0].machine is None
+    # 新写入正常（含 machine 盖章）
+    s2 = SqliteMemoryStore(store_path, machine='pc-a', agent_name='opencode')
+    rid = s2.remember(MemoryRecord(scope='app', category='other', title='new', content='y'))
+    assert s2.get(rid).machine == 'pc-a'
+
+
+def test_migrate_is_idempotent(store_path):
+    """多次 init_store 不重复加列、不报错（ALTER COLUMN 已存在会抛错，幂等性靠检测列名）。"""
+    s = SqliteMemoryStore(store_path)
+    s.init_store()
+    s.init_store()  # 二次不应抛 "duplicate column name"
+    s.init_store()  # 三次
+    cols = [r['name'] for r in s._query('PRAGMA table_info(ai_memory)')]
+    assert cols.count('machine') == 1
+    assert cols.count('agent_name') == 1
+
+# endregion

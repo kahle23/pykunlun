@@ -11,6 +11,7 @@ AI Agent 能力模块。
 """
 
 from .memory import (
+    PATH_LIKE_CATEGORIES,
     UPDATABLE_FIELDS,
     VALID_CATEGORIES,
     VALID_SOURCES,
@@ -24,6 +25,7 @@ from .memory import (
 from .memory_builtin import SqliteMemoryStore
 
 __all__ = [
+    'PATH_LIKE_CATEGORIES',
     'UPDATABLE_FIELDS',
     'VALID_CATEGORIES',
     'VALID_SOURCES',
