@@ -1,0 +1,365 @@
+"""
+长任务服务策略抽象基类。
+
+:class:`LongTaskService` 定义跨后端（sqlite / mysql / 未来 http）的统一接口，
+对标 :class:`pykunlun.ai_agent.memory.MemoryStore` 的角色，但命名为 **Service**
+而非 Store：接口方法不是纯存储操作——claim_next_step / finish_run / fail_run /
+sweep 是带事务语义与事件留痕的**业务编排操作**（这正是设计文档"抽象层方法必须
+是业务级粗粒度"的体现）；且下期整体切换为 HTTP 后端时
+``HttpLongTaskService(LongTaskService)`` 名副其实，"Store"则名不副实。
+"""
+
+from abc import ABC, abstractmethod
+from typing import Any
+
+from .model import AgentRun, TaskInstance, TaskStep, TaskTemplate
+
+
+class LongTaskService(ABC):
+    """
+    长任务服务策略抽象基类。
+
+    各后端实现（sqlite / mysql / 未来 http）继承本类，对外提供**业务级粗粒度**
+    的统一操作。方法刻意保持粗粒度（如 :meth:`claim_next_step` 是一个方法而非
+    "查一步 + 改一步 + 插一条 run" 三个方法）：本期直连数据库，下期整体切换为
+    HTTP 后端时逐方法转发即可，抽象层与调用方零改动。
+
+    **留痕副作用**：实现须在每次状态流转时自动追加一条 ``ai_task_event``
+    （``event_type='state_change'``），并约定 claim / finish / fail / cancel 等写操作
+    顺带刷新任务心跳（活动即心跳）。二者均在实现内部完成，不暴露给调用方。
+    """
+
+    # region ======== 服务标识与初始化 ========
+    @property
+    @abstractmethod
+    def service_type(self) -> str:
+        """本实现的类型标识（如 'sqlite'、'mysql'；未来 'http'）——标识服务走什么底座，
+        对标 ``RdbClient.db_type`` / ``MemoryStore.backend_type``。"""
+
+    @abstractmethod
+    def setup(self) -> None:
+        """初始化服务（幂等）：SQL 后端建 ``ai_task_*`` 六张表，HTTP 后端探活/握手。
+        首次使用前调用。"""
+    # endregion
+
+    # region ======== 任务 ========
+    @abstractmethod
+    def create_task(self, inst: TaskInstance) -> int:
+        """
+        创建任务实例（插入 pending 任务），回填并返回新 id。
+
+        Args:
+            inst: 任务实例（id 通常为 None；status 忽略输入固定为 pending）。
+
+        Returns:
+            新任务的主键 id。
+        """
+
+    @abstractmethod
+    def get_task(self, id: int) -> TaskInstance | None:
+        """按 id 取任务；不存在返回 None。"""
+
+    @abstractmethod
+    def list_tasks(
+        self,
+        status: str | None = None,
+        created_by: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """
+        任务列表（按 id 倒序），含动态进度。
+
+        进度不落列，由 steps 现算：每行附加 ``total``（步骤总数）与 ``done``
+        （succeeded 数）。
+
+        Args:
+            status: 限定任务状态；None 表示不限。
+            created_by: 限定创建者标签；None 表示不限。
+            limit: 最多返回条数（默认 50）。
+        """
+
+    @abstractmethod
+    def update_task(self, id: int, fields: dict[str, Any]) -> bool:
+        """
+        按 id 部分更新任务（仅 :data:`UPDATABLE_TASK_FIELDS` 白名单生效）。
+
+        Returns:
+            是否命中并更新（id 不存在或无可更新字段返回 False）。
+        """
+
+    @abstractmethod
+    def heartbeat(self, id: int) -> None:
+        """刷新任务心跳（单条 ``heartbeat_at = now``）。"""
+
+    @abstractmethod
+    def pause(self, id: int) -> bool:
+        """
+        暂停任务（running → paused）。已 running 的步骤不强杀，只是不再派发新步骤。
+
+        Returns:
+            是否命中（非 running 状态返回 False）。
+        """
+
+    @abstractmethod
+    def resume(self, id: int) -> bool:
+        """
+        恢复任务（paused → running）。
+
+        Returns:
+            是否命中（非 paused 状态返回 False）。
+        """
+
+    @abstractmethod
+    def cancel(self, id: int, reason: str = '') -> bool:
+        """
+        取消任务（非终态 → cancelled）：running 步骤连带置 failed（注明取消原因），
+        running run 置 cancelled；同一事务内完成。
+
+        Args:
+            id: 任务 id。
+            reason: 取消原因（记入事件）。
+
+        Returns:
+            是否命中（已终态返回 False）。
+        """
+    # endregion
+
+    # region ======== 步骤 ========
+    @abstractmethod
+    def add_step(self, step: TaskStep) -> int:
+        """
+        追加一个步骤，回填并返回新 id。
+
+        ``seq`` 缺省（None）时按 ``max(seq) + 1`` 自动取号；``max_retries`` 缺省时
+        继承任务级 ``TaskInstance.max_retries``；``step_type`` 须在
+        :data:`VALID_STEP_TYPES` 内（非法抛 ``ValueError``）。
+
+        Args:
+            step: 步骤（id 通常为 None）。
+
+        Returns:
+            新步骤的主键 id。
+        """
+
+    @abstractmethod
+    def add_steps(self, steps: list[TaskStep]) -> int:
+        """
+        批量追加步骤（同一事务；全部校验通过才插入，任一非法整体失败）。
+
+        ``seq`` 依列表顺序自动取号（已显式给 seq 的按给定值，校验同任务内唯一）。
+
+        Args:
+            steps: 步骤列表（非空，须同属一个任务）。
+
+        Returns:
+            成功插入的步骤数。
+        """
+
+    @abstractmethod
+    def get_step(self, id: int) -> TaskStep | None:
+        """按 id 取步骤；不存在返回 None。"""
+
+    @abstractmethod
+    def list_steps(self, task_id: int) -> list[dict[str, Any]]:
+        """按任务列出全部步骤（按 seq 升序），返回行字典列表。"""
+
+    @abstractmethod
+    def skip_step(self, id: int, reason: str = '') -> bool:
+        """
+        跳过 pending 步骤（pending → skipped，任务状态不变）。
+
+        Args:
+            id: 步骤 id。
+            reason: 跳过原因（记入事件）。
+
+        Returns:
+            是否命中（非 pending 返回 False）。
+        """
+
+    @abstractmethod
+    def retry_step(self, id: int) -> bool:
+        """
+        手动重置失败/跳过的步骤回 pending（管理动作，绕过自动流转表）。
+
+        语义："再给一次机会"——``max_retries + 1`` 后回 pending；若所属任务已因
+        该步骤失败（failed），任务一并复活为 running（刷心跳），等下次 claim 继续。
+
+        Returns:
+            是否命中（步骤非 failed/skipped 返回 False）。
+        """
+    # endregion
+
+    # region ======== 执行 ========
+    @abstractmethod
+    def claim_next_step(
+        self,
+        task_id: int,
+        session_id: str | None = None,
+        agent_name: str | None = None,
+    ) -> dict[str, Any] | None:
+        """
+        原子认领任务的下一个 pending 步骤（seq 最小者），创建 running run。
+
+        并发安全靠条件 UPDATE 的受影响行数做乐观锁。认领成功后：插 run（running）、
+        任务首次 claim 时 pending → running、刷新心跳、追加事件——同一事务。
+
+        Args:
+            task_id: 任务 id。
+            session_id: 执行会话标识（盖章 run）。
+            agent_name: agent 外壳标识（盖章 run）。
+
+        Returns:
+            **续跑上下文包**（新会话接手所需的全部信息）::
+
+                {
+                  "task":    {任务全部字段},
+                  "step":    {步骤全部字段},
+                  "run_id":  本次执行的 run id,
+                  "context": [{"seq", "name", "result_summary"}, ...]  # 前序成功步骤摘要
+                }
+
+            任务无 pending 步骤（或任务非 pending/running 状态）返回 None，
+            调用方应转 status 查看终态。
+        """
+
+    @abstractmethod
+    def finish_run(self, run_id: int, output: str = '', summary: str | None = None) -> bool:
+        """
+        成功收口一次执行：run → succeeded、step → succeeded（写 result_summary），
+        该任务最后一个步骤完成时任务 → completed；同一事务。
+
+        ``summary`` 缺省时截取 output 前 2000 字。任务未完成时顺带刷新心跳。
+
+        Args:
+            run_id: 执行 id。
+            output: 执行输出原文（子代理返回）。
+            summary: 一句话结果摘要（后续步骤的上下文来源，比 output 更重要）。
+
+        Returns:
+            是否流转成功（run 已是终态返回 False，不重复流转）。
+        """
+
+    @abstractmethod
+    def fail_run(self, run_id: int, error: str) -> str:
+        """
+        失败上报：run → failed，步骤去向按重试预算自动裁决（同一事务）。
+
+        - 预算未耗尽：step running → pending（``retry_count + 1``），任务不变，等下次 claim；
+        - 预算耗尽：step → failed，任务 → failed。
+
+        Args:
+            run_id: 执行 id。
+            error: 失败原因。
+
+        Returns:
+            ``'retried'``（步骤已回 pending 待重试）、``'step_failed'``（预算耗尽终败）
+            或 ``''``（run 已是终态，未做流转）。
+        """
+
+    @abstractmethod
+    def get_run(self, run_id: int) -> AgentRun | None:
+        """按 id 取执行记录；不存在返回 None。"""
+
+    @abstractmethod
+    def list_runs(self, step_id: int) -> list[dict[str, Any]]:
+        """按步骤列出全部执行尝试（按 id 升序），返回行字典列表。"""
+    # endregion
+
+    # region ======== 恢复 ========
+    @abstractmethod
+    def sweep(self, heartbeat_timeout_sec: int | None = None) -> list[dict[str, Any]]:
+        """
+        僵尸检测与恢复（幂等，可重复执行），同一事务。
+
+        1. **任务级**：``status='running'`` 且 ``heartbeat_at`` 超过心跳阈值的任务——
+           其 running 步骤的 running run 置 ``timeout``（error_msg='heartbeat timeout'），
+           步骤按重试预算回 pending 或置 failed（耗尽则任务 failed）。任务本身保持
+           running（心跳断了 ≠ 任务死了，回 pending 的步骤等下次 claim）。
+        2. **步骤级**：run.started_at 超过 step.timeout_sec 但仍在 running（任务心跳
+           正常，属单步卡死）——同上按预算处理。
+
+        Args:
+            heartbeat_timeout_sec: 心跳超时阈值秒的全局覆盖；None = 逐任务用其自身
+                ``heartbeat_timeout_sec`` 列。
+
+        Returns:
+            被恢复对象的摘要列表，每项 ``{task_id, step_id, run_id, action, detail}``。
+        """
+    # endregion
+
+    # region ======== 产物 / 事件 ========
+    @abstractmethod
+    def add_artifact(
+        self,
+        task_id: int,
+        art_type: str,
+        path: str,
+        step_id: int | None = None,
+        note: str | None = None,
+    ) -> int:
+        """
+        登记一个产物，回填并返回新 id。
+
+        Args:
+            task_id: 所属任务 id。
+            art_type: 产物类型，须在 :data:`VALID_ART_TYPES` 内。
+            path: 产物路径（相对仓库根或绝对路径）。
+            step_id: 所属步骤 id；None = 任务级产物。
+            note: 备注。
+        """
+
+    @abstractmethod
+    def list_artifacts(self, task_id: int) -> list[dict[str, Any]]:
+        """按任务列出全部产物（按 id 升序），返回行字典列表。"""
+
+    @abstractmethod
+    def add_event(
+        self,
+        task_id: int,
+        event_type: str,
+        message: str,
+        level: str = 'info',
+        step_id: int | None = None,
+        run_id: int | None = None,
+    ) -> int:
+        """
+        手动追加一条事件，回填并返回新 id（状态流转的自动留痕在实现内部，不经此方法）。
+
+        Args:
+            task_id: 所属任务 id。
+            event_type: 事件类型，须在 :data:`VALID_EVENT_TYPES` 内。
+            message: 事件内容。
+            level: 级别，须在 :data:`VALID_EVENT_LEVELS` 内。
+            step_id: 关联步骤 id；可空。
+            run_id: 关联执行 id；可空。
+        """
+
+    @abstractmethod
+    def list_events(self, task_id: int, limit: int = 100) -> list[dict[str, Any]]:
+        """按任务查事件流水（按 id 倒序取最近 limit 条），返回行字典列表。"""
+    # endregion
+
+    # region ======== 模板 ========
+    @abstractmethod
+    def create_template(self, t: TaskTemplate) -> int:
+        """
+        保存模板，回填并返回新 id。
+
+        Args:
+            t: 模板（id 通常为 None）。
+
+        Returns:
+            新模板的主键 id。
+
+        Raises:
+            ValueError: 模板名已存在（唯一键冲突由实现转为该异常）。
+        """
+
+    @abstractmethod
+    def get_template_by_name(self, template_name: str) -> TaskTemplate | None:
+        """按模板名取模板；不存在返回 None。"""
+
+    @abstractmethod
+    def list_templates(self, limit: int = 50) -> list[dict[str, Any]]:
+        """模板列表（按 id 倒序），返回行字典列表。"""
+    # endregion
