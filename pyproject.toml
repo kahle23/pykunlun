@@ -25,11 +25,21 @@ pykunlun = ["py.typed"]
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]
+# 轻量本地 OCR 默认实现：约 30MB 包体（含模型），CPU 推理，中英文。
+# 安装方式：pip install pykunlun[rapidocr]
+# 不装此 extra 时，import pykunlun.ai.ocr 仍正常，仅在实例化 RapidOcr 时报 ImportError。
+rapidocr = ["rapidocr", "onnxruntime"]
 
 [tool.mypy]
 python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
+
+# 延迟加载的可选重依赖：仅在 RapidOcr.__init__ 内按需 import，
+# 用户未安装 rapidocr extra 时不应被 mypy 判为错误。
+[[tool.mypy.overrides]]
+module = ["rapidocr", "rapidocr.*"]
+ignore_missing_imports = true
 
 [tool.ruff]
 target-version = "py310"

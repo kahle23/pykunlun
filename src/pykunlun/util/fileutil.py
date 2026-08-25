@@ -10,6 +10,7 @@
 
 import os
 import shutil
+from datetime import datetime
 from typing import IO
 
 from pykunlun.util import logutil, pathutil
@@ -240,28 +241,28 @@ def read_text(file_path: str, encoding: str = "utf-8", *,
 # endregion
 
 
-# region ======== 文件名生成（暂未启用，待有调用方再放开；启用时需恢复顶部 `from datetime import datetime`） ========
+# region ======== 文件名生成 ========
 
-# def timestamped_filename(name_parts: list[str], ext: str) -> str:
-#     """
-#     生成带时间戳的文件名：``{p1}_{p2}_..._{timestamp}.{ext}``。
-#
-#     名称片段按顺序用下划线拼接，末尾追加形如 ``%Y%m%d_%H%M%S`` 的时间戳，最后加上扩展名。
-#     不对 ``name_parts`` 做任何路径剥离或规范化——调用方负责预处理（如对路径型标识
-#     先取 basename、去扩展名）。
-#
-#     Args:
-#         name_parts: 名称片段列表（按顺序用 ``_`` 拼接）。
-#         ext: 扩展名（不含点，如 ``'sql'`` 或 ``'sql.gz'``）。
-#
-#     Returns:
-#         形如 ``{p1}_{p2}_..._{timestamp}.{ext}`` 的文件名。
-#
-#     Examples:
-#         >>> # 形如 mysql_mydb_20240101_120000.sql.gz
-#         >>> timestamped_filename(['mysql', 'mydb'], 'sql.gz')
-#     """
-#     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-#     return f"{'_'.join([*name_parts, timestamp])}.{ext}"
+def timestamped_filename(name_parts: list[str], ext: str) -> str:
+    """
+    生成带时间戳的文件名：``{p1}_{p2}_..._{timestamp}.{ext}``。
+
+    名称片段按顺序用下划线拼接，末尾追加形如 ``%Y%m%d_%H%M%S`` 的时间戳，最后加上扩展名。
+    不对 ``name_parts`` 做任何路径剥离或规范化——调用方负责预处理（如对路径型标识
+    先取 basename、去扩展名）。
+
+    Args:
+        name_parts: 名称片段列表（按顺序用 ``_`` 拼接）。
+        ext: 扩展名（不含点，如 ``'sql'`` 或 ``'sql.gz'``）。
+
+    Returns:
+        形如 ``{p1}_{p2}_..._{timestamp}.{ext}`` 的文件名。
+
+    Examples:
+        >>> # 形如 mysql_mydb_20240101_120000.sql.gz
+        >>> timestamped_filename(['mysql', 'mydb'], 'sql.gz')
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{'_'.join([*name_parts, timestamp])}.{ext}"
 
 # endregion
