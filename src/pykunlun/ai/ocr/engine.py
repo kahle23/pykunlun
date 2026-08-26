@@ -321,7 +321,7 @@ class OcrEngine(ABC):
         Args:
             image: 图片路径或 OpenCV 图像数组。传入数组时会创建副本，不修改原图。
             color: 边界框与文本颜色，BGR 格式。
-            thickness: 边界框线条粗细；为 ``None`` 时透传给 cv2、沿用其默认（1）。
+            thickness: 边界框线条粗细；为 ``None`` 时按 cv2 默认粗细（1）绘制。
             output_path: 结果保存路径；为 ``None`` 时仅返回图像数组不保存。
 
         Returns:
@@ -336,9 +336,12 @@ class OcrEngine(ABC):
         import numpy as np
 
         img = self._load_image(image)
+        line_thickness = 1 if thickness is None else thickness
         for item in self._filter_results(self._recognize_array(img)):
             pts = np.array(item.bbox, np.int32).reshape((-1, 1, 2))
-            cv2.polylines(img, [pts], isClosed=True, color=color, thickness=thickness)
+            cv2.polylines(
+                img, [pts], isClosed=True, color=color, thickness=line_thickness
+            )
 
             x, y = int(item.bbox[0][0]), int(item.bbox[0][1]) - 10
             cv2.putText(

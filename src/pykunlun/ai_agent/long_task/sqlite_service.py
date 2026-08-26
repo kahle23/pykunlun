@@ -517,14 +517,16 @@ class SqliteLongTaskService(LongTaskService):
             f'SELECT * FROM {self._t("ai_task_step")} WHERE task_id = ? ORDER BY seq', (task_id,))
 
     def skip_step(self, id: int, reason: str = '') -> bool:
+        t_task = self._t('ai_task_instance')
+        t_step = self._t('ai_task_step')
         now = _iso(datetime.now())
         with self._conn() as conn:
-            rows = self._q(conn, f'SELECT * FROM {self._t("ai_task_step")} WHERE id = ?', (id,))
+            rows = self._q(conn, f'SELECT * FROM {t_step} WHERE id = ?', (id,))
             if not rows:
                 log.warning("skip 未找到步骤 id=%s", id)
                 return False
             affected = conn.execute(
-                f'UPDATE {self._t("ai_task_step")} '
+                f'UPDATE {t_step} '
                 f'SET status = ?, finished_at = ?, updated_at = ? WHERE id = ? AND status = ?',
                 ('skipped', now, now, id, 'pending')).rowcount
             if not affected:
@@ -532,6 +534,20 @@ class SqliteLongTaskService(LongTaskService):
                 return False
             msg = f"step {id}: pending → skipped" + (f' ({reason})' if reason else '')
             self._event(conn, rows[0]['task_id'], 'state_change', msg, step_id=id)
+            # 收口判定与 finish_run 一致：skip 视同有意完成，跳过最后剩余步骤时
+            # 任务应收口（仅 running 任务；pending 任务跳完全部步骤保持 pending）。
+            cnt = self._q(
+                conn, f'SELECT status, COUNT(*) AS n FROM {t_step} '
+                      f'WHERE task_id = ? AND status IN (?,?,?) GROUP BY status',
+                (rows[0]['task_id'], 'pending', 'running', 'failed'))
+            counts = {r['status']: r['n'] for r in cnt}
+            if not counts.get('pending') and not counts.get('running') and not counts.get('failed'):
+                conn.execute(
+                    f'UPDATE {t_task} SET status = ?, finished_at = ?, heartbeat_at = ?, '
+                    f'updated_at = ? WHERE id = ? AND status = ?',
+                    ('completed', now, now, now, rows[0]['task_id'], 'running'))
+                self._event(conn, rows[0]['task_id'], 'state_change',
+                            'task: running → completed (剩余步骤全部跳过)')
         return True
 
     def retry_step(self, id: int) -> bool:
@@ -632,7 +648,8 @@ class SqliteLongTaskService(LongTaskService):
         log.warning("claim 连续 3 次抢占失败（task=%s），放弃本次认领", task_id)
         return None
 
-    def finish_run(self, run_id: int, output: str = '', summary: str | None = None) -> bool:
+    def finish_run(self, run_id: int, output: str = '', summary: str | None = None,
+                   token_usage: int | None = None) -> bool:
         t_task = self._t('ai_task_instance')
         t_step = self._t('ai_task_step')
         t_run = self._t('ai_task_run')
@@ -649,9 +666,9 @@ class SqliteLongTaskService(LongTaskService):
             if summary is None:
                 summary = output[:2000] if output else ''
             conn.execute(
-                f'UPDATE {t_run} SET status = ?, output = ?, finished_at = ? '
+                f'UPDATE {t_run} SET status = ?, output = ?, token_usage = ?, finished_at = ? '
                 f'WHERE id = ? AND status = ?',
-                ('succeeded', output, _iso(now), run_id, 'running'))
+                ('succeeded', output, token_usage, _iso(now), run_id, 'running'))
             conn.execute(
                 f'UPDATE {t_step} SET status = ?, result_summary = ?, finished_at = ?, '
                 f'updated_at = ? WHERE id = ? AND status = ?',
@@ -792,6 +809,51 @@ class SqliteLongTaskService(LongTaskService):
                         'task: running → failed (sweep, 步骤预算耗尽)')
         return out
 
+    def _reap_task_timeout(self, conn: sqlite3.Connection, task: dict[str, Any],
+                           now: datetime) -> list[dict[str, Any]]:
+        """任务总超时终态化：running run 置 timeout、running 步骤置 failed、任务置 failed。
+
+        不走重试预算裁决——任务整体时间预算已尽，重试无意义；
+        可用 retry_step 手动复活（预算 +1 且任务回 running）。
+        """
+        t_task = self._t('ai_task_instance')
+        t_step = self._t('ai_task_step')
+        t_run = self._t('ai_task_run')
+        out: list[dict[str, Any]] = []
+        reason = 'task total timeout'
+        steps = self._q(conn, f'SELECT * FROM {t_step} WHERE task_id = ? AND status = ?',
+                        (task['id'], 'running'))
+        for s in steps:
+            runs = self._q(conn, f'SELECT * FROM {t_run} WHERE step_id = ? AND status = ?',
+                           (s['id'], 'running'))
+            for r in runs:
+                conn.execute(
+                    f'UPDATE {t_run} SET status = ?, error_msg = ?, finished_at = ? '
+                    f'WHERE id = ? AND status = ?',
+                    ('timeout', reason, _iso(now), r['id'], 'running'))
+                out.append({'task_id': task['id'], 'step_id': s['id'], 'run_id': r['id'],
+                            'action': 'task_timeout', 'detail': reason})
+                self._event(conn, task['id'], 'state_change',
+                            f"run {r['id']}: running → timeout ({reason})",
+                            step_id=s['id'], run_id=r['id'])
+            conn.execute(
+                f'UPDATE {t_step} SET status = ?, finished_at = ?, updated_at = ? '
+                f'WHERE id = ? AND status = ?',
+                ('failed', _iso(now), _iso(now), s['id'], 'running'))
+            out.append({'task_id': task['id'], 'step_id': s['id'], 'run_id': None,
+                        'action': 'step_failed', 'detail': reason})
+            self._event(conn, task['id'], 'state_change',
+                        f"step {s['id']}: running → failed ({reason})", step_id=s['id'])
+        conn.execute(
+            f'UPDATE {t_task} SET status = ?, finished_at = ?, updated_at = ? '
+            f'WHERE id = ? AND status = ?',
+            ('failed', _iso(now), _iso(now), task['id'], 'running'))
+        out.append({'task_id': task['id'], 'step_id': None, 'run_id': None,
+                    'action': 'task_failed', 'detail': reason})
+        self._event(conn, task['id'], 'state_change',
+                    f"task {task['id']}: running → failed (任务总超时)")
+        return out
+
     def sweep(self, heartbeat_timeout_sec: int | None = None) -> list[dict[str, Any]]:
         t_task = self._t('ai_task_instance')
         t_step = self._t('ai_task_step')
@@ -799,6 +861,18 @@ class SqliteLongTaskService(LongTaskService):
         results: list[dict[str, Any]] = []
         now = datetime.now()
         with self._conn() as conn:
+            # ⓪ 任务级：总超时（timeout_sec 非空且 started_at 距今超过它）——任务连同
+            # running 步骤直接终败，不走预算裁决。须先于心跳检测执行。
+            timed_out = self._q(
+                conn, f'SELECT * FROM {t_task} WHERE status = ? AND timeout_sec IS NOT NULL',
+                ('running',))
+            for t in timed_out:
+                if not t['started_at']:
+                    continue
+                threshold = (now - timedelta(seconds=int(t['timeout_sec']))).isoformat()
+                if t['started_at'] >= threshold:
+                    continue
+                results.extend(self._reap_task_timeout(conn, t, now))
             # ① 任务级：心跳超时的 running 任务，其 running 步骤按僵尸处理
             running_tasks = self._q(conn, f'SELECT * FROM {t_task} WHERE status = ?',
                                     ('running',))

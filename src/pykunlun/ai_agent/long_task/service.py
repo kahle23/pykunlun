@@ -166,7 +166,11 @@ class LongTaskService(ABC):
     @abstractmethod
     def skip_step(self, id: int, reason: str = '') -> bool:
         """
-        跳过 pending 步骤（pending → skipped，任务状态不变）。
+        跳过 pending 步骤（pending → skipped）。
+
+        skip 视同有意完成：若跳过后任务已无 pending/running/failed 步骤，
+        running 任务自动收口为 completed（判定与 :meth:`finish_run` 一致；
+        pending 任务保持 pending）。
 
         Args:
             id: 步骤 id。
@@ -223,7 +227,8 @@ class LongTaskService(ABC):
         """
 
     @abstractmethod
-    def finish_run(self, run_id: int, output: str = '', summary: str | None = None) -> bool:
+    def finish_run(self, run_id: int, output: str = '', summary: str | None = None,
+                   token_usage: int | None = None) -> bool:
         """
         成功收口一次执行：run → succeeded、step → succeeded（写 result_summary），
         该任务最后一个步骤完成时任务 → completed；同一事务。
@@ -234,6 +239,7 @@ class LongTaskService(ABC):
             run_id: 执行 id。
             output: 执行输出原文（子代理返回）。
             summary: 一句话结果摘要（后续步骤的上下文来源，比 output 更重要）。
+            token_usage: 本次执行 token 消耗（可选回填，仅落 run 行，不影响流转）。
 
         Returns:
             是否流转成功（run 已是终态返回 False，不重复流转）。
@@ -271,19 +277,26 @@ class LongTaskService(ABC):
         """
         僵尸检测与恢复（幂等，可重复执行），同一事务。
 
-        1. **任务级**：``status='running'`` 且 ``heartbeat_at`` 超过心跳阈值的任务——
+        1. **任务总超时**：``status='running'`` 且 ``timeout_sec`` 非空且
+           ``started_at`` 距今超过它——其 running 步骤的 running run 置 ``timeout``
+           （error_msg='task total timeout'）、running 步骤直接置 ``failed``
+           （不走预算裁决：整体时间预算已尽，重试无意义）、任务 → ``failed``。
+           可用 :meth:`retry_step` 手动复活（预算 +1 且任务回 running）。
+        2. **任务心跳**：``status='running'`` 且 ``heartbeat_at`` 超过心跳阈值的任务——
            其 running 步骤的 running run 置 ``timeout``（error_msg='heartbeat timeout'），
            步骤按重试预算回 pending 或置 failed（耗尽则任务 failed）。任务本身保持
            running（心跳断了 ≠ 任务死了，回 pending 的步骤等下次 claim）。
-        2. **步骤级**：run.started_at 超过 step.timeout_sec 但仍在 running（任务心跳
-           正常，属单步卡死）——同上按预算处理。
+        3. **步骤级**：run.started_at 超过 step.timeout_sec 但仍在 running（任务心跳
+           正常，属单步卡死）——按预算处理。
 
         Args:
             heartbeat_timeout_sec: 心跳超时阈值秒的全局覆盖；None = 逐任务用其自身
-                ``heartbeat_timeout_sec`` 列。
+                ``heartbeat_timeout_sec`` 列（任务总超时不提供覆盖，只用自身 ``timeout_sec``）。
 
         Returns:
-            被恢复对象的摘要列表，每项 ``{task_id, step_id, run_id, action, detail}``。
+            被恢复对象的摘要列表，每项 ``{task_id, step_id, run_id, action, detail}``；
+            ``action`` 取值 ``run_timeout / step_retry / step_failed / task_timeout /
+            task_failed``（后两类仅在命中任务总超时时出现）。
         """
     # endregion
 

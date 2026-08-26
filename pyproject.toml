@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pykunlun"
-version = "0.0.2"
+version = "0.0.4"
 description = "Kunlun，与具体业务无关的 Python 底层能力库。承载跨平台、跨业务的通用抽象与基础设施，不依赖上层应用包。"
 readme = "README.md"
 license = "GPL-3.0-or-later"

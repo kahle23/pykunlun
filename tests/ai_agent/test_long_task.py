@@ -60,11 +60,12 @@ def mgr(store):
     return m
 
 
-def _mk_task(store, title='示例任务', max_retries=1, heartbeat_timeout_sec=1800):
+def _mk_task(store, title='示例任务', max_retries=1, heartbeat_timeout_sec=1800,
+             timeout_sec=None):
     """建一个任务并返回 id。"""
     return store.create_task(TaskInstance(
         title=title, goal='完成示例目标', max_retries=max_retries,
-        heartbeat_timeout_sec=heartbeat_timeout_sec))
+        heartbeat_timeout_sec=heartbeat_timeout_sec, timeout_sec=timeout_sec))
 
 
 def _mk_steps(store, task_id, names=('第一步', '第二步', '第三步')):
@@ -306,6 +307,23 @@ def test_finish_terminal_run_returns_false(store):
     assert store.finish_run(p['run_id'], output='again') is False   # 重复 finish 不流转
 
 
+def test_finish_records_token_usage(store):
+    tid = _mk_task(store)
+    _mk_steps(store, tid, names=('one',))
+    p = store.claim_next_step(tid)
+    assert store.finish_run(p['run_id'], output='ok', summary='完成',
+                            token_usage=12345) is True
+    assert store.get_run(p['run_id']).token_usage == 12345
+
+
+def test_finish_without_token_usage_keeps_null(store):
+    tid = _mk_task(store)
+    _mk_steps(store, tid, names=('one',))
+    p = store.claim_next_step(tid)
+    store.finish_run(p['run_id'], output='ok', summary='完成')
+    assert store.get_run(p['run_id']).token_usage is None
+
+
 def test_fail_within_budget_retries(store):
     tid = _mk_task(store, max_retries=1)
     sids = _mk_steps(store, tid, names=('one', 'two'))
@@ -362,6 +380,35 @@ def test_skip_non_pending_fails(store):
     sids = _mk_steps(store, tid, names=('one',))
     store.claim_next_step(tid)                         # step → running
     assert store.skip_step(sids[0]) is False
+
+
+def test_skip_last_remaining_step_completes_task(store):
+    """skip 视同有意完成：跳过最后剩余步骤时 running 任务自动收口。"""
+    tid = _mk_task(store)
+    sids = _mk_steps(store, tid, names=('one', 'two'))
+    p = store.claim_next_step(tid)
+    store.finish_run(p['run_id'], output='ok', summary='一完成')
+    assert store.get_task(tid).status == 'running'     # two 还 pending，未收口
+    assert store.skip_step(sids[1], reason='不需要') is True
+    assert store.get_task(tid).status == 'completed'   # 跳过最后剩余步骤 → 收口
+
+
+def test_finish_completes_when_rest_skipped(store):
+    """先跳过后续步骤，最后一个实际执行步骤 finish 时收口（skipped 不阻断判定）。"""
+    tid = _mk_task(store)
+    sids = _mk_steps(store, tid, names=('one', 'two'))
+    assert store.skip_step(sids[1], reason='砍需求') is True
+    p = store.claim_next_step(tid)
+    store.finish_run(p['run_id'], output='ok', summary='一完成')
+    assert store.get_task(tid).status == 'completed'
+
+
+def test_skip_all_steps_keeps_task_pending(store):
+    """从未 claim 的任务跳完全部步骤保持 pending（pending→completed 不合法）。"""
+    tid = _mk_task(store)
+    sids = _mk_steps(store, tid, names=('one',))
+    assert store.skip_step(sids[0]) is True
+    assert store.get_task(tid).status == 'pending'
 
 
 def test_retry_step_revives_failed(store):
@@ -476,6 +523,40 @@ def test_sweep_idempotent_on_zombie(store):
     assert first
     assert store.sweep() == []
 
+
+def test_sweep_task_total_timeout(store):
+    """任务总超时：run 置 timeout、running 步骤直接终败（不走预算）、任务 failed。"""
+    tid = _mk_task(store, max_retries=5, heartbeat_timeout_sec=9999, timeout_sec=0)
+    sids = _mk_steps(store, tid, names=('one',))
+    p = store.claim_next_step(tid)
+    results = store.sweep()
+    assert any(r['action'] == 'task_timeout' and r['run_id'] == p['run_id'] for r in results)
+    assert any(r['action'] == 'task_failed' for r in results)
+    assert store.get_run(p['run_id']).status == 'timeout'
+    assert store.get_run(p['run_id']).error_msg == 'task total timeout'
+    assert store.get_step(sids[0]).status == 'failed'  # 预算 5 也直接终败
+    assert store.get_task(tid).status == 'failed'
+    assert store.sweep() == []                          # 幂等
+
+
+def test_sweep_task_total_timeout_revive_by_retry(store):
+    """任务总超时终败后可用 retry_step 手动复活（预算 +1、任务回 running）。"""
+    tid = _mk_task(store, heartbeat_timeout_sec=9999, timeout_sec=0)
+    sids = _mk_steps(store, tid, names=('one',))
+    store.claim_next_step(tid)
+    store.sweep()
+    assert store.retry_step(sids[0]) is True
+    assert store.get_step(sids[0]).status == 'pending'
+    assert store.get_task(tid).status == 'running'
+
+
+def test_sweep_total_timeout_ignores_unset(store):
+    """未设 timeout_sec 的任务不参与总超时检测（心跳正常则 sweep 无动作）。"""
+    tid = _mk_task(store, heartbeat_timeout_sec=9999)   # timeout_sec 默认 None
+    _mk_steps(store, tid, names=('one',))
+    store.claim_next_step(tid)
+    assert store.sweep() == []
+
 # endregion
 
 
@@ -515,7 +596,7 @@ def test_templates(store):
     tid = _mk_task(store)
     _mk_steps(store, tid, names=('one', 'two'))
     t = TaskTemplate(
-        name='文档任务', description='标准文档流程',
+        name='文档任务', description='标准文档流程', skill_ref='agent-long-task',
         default_params={'repo': 'x'},
         step_blueprint=[{'name': 'one', 'instruction': 'i1', 'step_type': 'agent'}],
     )
@@ -524,6 +605,7 @@ def test_templates(store):
     got = store.get_template_by_name('文档任务')
     assert got.step_blueprint[0]['name'] == 'one'      # JSON 列往返
     assert got.default_params == {'repo': 'x'}
+    assert got.skill_ref == 'agent-long-task'          # skill_ref 往返
     assert store.get_template_by_name('不存在') is None
     assert len(store.list_templates()) == 1
     with pytest.raises(ValueError, match='已存在'):

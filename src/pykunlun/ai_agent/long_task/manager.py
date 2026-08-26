@@ -155,9 +155,11 @@ class LongTaskManager:
         run_id: int,
         output: str = '',
         summary: str | None = None,
+        token_usage: int | None = None,
         name: str | None = None,
     ) -> bool:
-        return self.get_service(name).finish_run(run_id, output=output, summary=summary)
+        return self.get_service(name).finish_run(run_id, output=output, summary=summary,
+                                                 token_usage=token_usage)
 
     def fail_run(self, run_id: int, error: str, name: str | None = None) -> str:
         return self.get_service(name).fail_run(run_id, error)

@@ -48,11 +48,6 @@ UPDATABLE_TASK_FIELDS: frozenset[str] = frozenset({
     'title', 'goal', 'params', 'max_retries', 'heartbeat_timeout_sec', 'timeout_sec',
 })
 
-#: update_step（经 result_summary 回填等场景）允许修改的字段白名单
-UPDATABLE_STEP_FIELDS: frozenset[str] = frozenset({
-    'name', 'instruction', 'timeout_sec', 'max_retries', 'result_summary',
-})
-
 #: 合法的 step_type 取值
 VALID_STEP_TYPES: frozenset[str] = frozenset({'agent', 'bash', 'human_approval', 'condition'})
 
