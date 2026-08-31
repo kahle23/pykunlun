@@ -10,7 +10,19 @@
 
   - ``step failed → pending``：手动 retry_step（预算 +1 后复活）；
   - ``task failed → running``：retry_step 复活因该步骤失败的任务。
+
+0.0.5 起新增的管理动作（同样绕过自动流转表，由实现层显式处理）：
+
+  - ``step running → pending``（**不加** retry_count）：release_run 释放认领，
+    把未完成的步骤还回队列（区别于 fail_run 的一次失败、消耗预算）；
+  - ``step succeeded → pending/running``：verify_task --fix / retry_step(force=True)
+    对假成功（绕过状态机直接改库）的就地修复；``task completed → running`` 同理；
+  - 步骤可声明 ``depends_on``（依赖更早 seq 列表）：claim 依赖感知模式的就绪判定
+    见 :func:`deps_satisfied`。
 """
+
+import json
+from typing import Any
 
 #: 任务实例的合法状态集
 TASK_STATUSES: frozenset[str] = frozenset({
@@ -112,3 +124,50 @@ def step_disposition_on_fail(retry_count: int, max_retries: int) -> str:
         ``'pending'``（预算未耗尽，回 pending 待重试）或 ``'failed'``（预算耗尽，终败）。
     """
     return 'pending' if retry_count < max_retries else 'failed'
+
+
+#: 依赖就绪判定中视为"已完成"的步骤状态集合。含 ``skipped``：跳过是有意决策
+#: （如功能放弃），不应永久阻塞下游步骤。
+DEP_SATISFIED_STATUSES: frozenset[str] = frozenset({'succeeded', 'skipped'})
+
+
+def parse_depends_on(value: Any) -> list[int]:
+    """
+    解析步骤 ``depends_on`` 列值为依赖 seq 列表（纯函数，读侧容错）。
+
+    Args:
+        value: 列原值——JSON 数组字符串（``"[3,7]"``）/ 已解析的 list / None / 空串。
+
+    Returns:
+        依赖 seq 列表（int 升序去重）；值为空返回 ``[]``；非法元素（非 int）丢弃。
+    """
+    if value is None or value == '':
+        return []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return []
+    if not isinstance(value, list):
+        return []
+    return sorted({v for v in value if isinstance(v, int) and not isinstance(v, bool)})
+
+
+def deps_satisfied(dep_seqs: list[int], status_by_seq: dict[int, str]) -> bool:
+    """
+    依赖就绪判定（纯函数，claim 依赖感知模式复用）。
+
+    全部依赖 seq 的当前状态都在 :data:`DEP_SATISFIED_STATUSES` 内即就绪
+    （依赖列表为空视为就绪）；依赖引用了不存在的 seq 视为**未就绪**（脏数据不误放行）。
+
+    Args:
+        dep_seqs: 依赖 seq 列表（经 :func:`parse_depends_on` 解析）。
+        status_by_seq: 同任务全部步骤的 ``{seq: status}`` 映射。
+
+    Returns:
+        是否就绪。
+    """
+    for seq in dep_seqs:
+        if status_by_seq.get(seq) not in DEP_SATISFIED_STATUSES:
+            return False
+    return True

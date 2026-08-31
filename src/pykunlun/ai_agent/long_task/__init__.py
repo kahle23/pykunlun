@@ -25,6 +25,7 @@ from .model import AgentRun, TaskArtifact, TaskEvent, TaskInstance, TaskStep, Ta
 from .service import LongTaskService
 from .sqlite_service import SqliteLongTaskService
 from .state import (
+    DEP_SATISFIED_STATUSES,
     RUN_STATUSES,
     STEP_STATUSES,
     STEP_TRANSITIONS,
@@ -37,10 +38,13 @@ from .state import (
     VALID_STEP_TYPES,
     assert_step_transition,
     assert_task_transition,
+    deps_satisfied,
+    parse_depends_on,
     step_disposition_on_fail,
 )
 
 __all__ = [
+    'DEP_SATISFIED_STATUSES',
     'RUN_STATUSES',
     'STEP_STATUSES',
     'STEP_TRANSITIONS',
@@ -62,5 +66,7 @@ __all__ = [
     'TaskTemplate',
     'assert_step_transition',
     'assert_task_transition',
+    'deps_satisfied',
+    'parse_depends_on',
     'step_disposition_on_fail',
 ]

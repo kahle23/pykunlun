@@ -8,6 +8,7 @@
 import sys
 import threading
 from collections.abc import Callable
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Optional
 
 from pykunlun.cli.command import Command, CommandNotFoundError, HelpCommand
@@ -209,17 +210,24 @@ class CommandManager:
 
         ``--delim`` / ``--output-charset`` 等全局标记由 ``ctx.init()`` 统一解析（可出现在
         任意位置，含命令名之前）；命令名由 ``current_args[0]`` 解析。无命令时默认显示帮助。
+        ``--version`` / ``-v`` 为框架级即退标记：在上下文构建前拦截，打印调用方包
+        版本后直接返回，不进入命令分发。
 
         Args:
             on_startup: 启动回调，接收 CliContext；为 None 跳过。在 ``ctx.init()`` 中首先调用。
             on_shutdown: 关闭回调，接收 CliContext；为 None 跳过。在 ``ctx.destroy()`` 中调用。
         """
+        # --version / -v：即退全局标记，优先于一切命令（含 help）
+        if any(token in ("-v", "--version") for token in sys.argv[1:]):
+            self._print_caller_version()
+            return
         # 读 sys.argv 构建上下文，并把生命周期回调挂到 ctx 上
         ctx = CliContext(sys.argv[1:])
         ctx.on_startup = on_startup
         ctx.on_shutdown = on_shutdown
 
         with cli_context_holder.using(ctx):
+            result: Any = None
             try:
                 # 初始化：on_startup → 解析 --delim / --output-charset → 应用 charset → 解析命令名
                 ctx.init()
@@ -229,12 +237,13 @@ class CommandManager:
                     ctx.command_name = help_command.name if help_command else "help"
                 # 执行命令（捕获 CommandNotFoundError 以打印帮助提示）
                 try:
-                    self._execute_command(ctx)
+                    result = self._execute_command(ctx)
                 except CommandNotFoundError as e:
                     help_command = self.get_help_command()
                     help_name = help_command.name if help_command else "help"
                     print(str(e))
                     print(f"使用 'python -m {pkginfo.get_caller_top_package_name()} {help_name}' 查看可用命令")
+                    # 命令不存在 → 通用失败 exit 1（退出码总约定见 main_cli 末尾注释）
                     sys.exit(1)
             finally:
                 # 销毁：on_shutdown 等；destroy 不应抛异常，但兜底保护
@@ -242,3 +251,26 @@ class CommandManager:
                     ctx.destroy()
                 except Exception:
                     pass
+        # 退出码约定：0 是成功，1 是"通用失败"——成功只有一种状态，失败有无数种原因；
+        # 故不细分错误码，失败一律 exit 1，具体失败原因由命令输出承载（log.error / ❌ 标记等），
+        # 调用方（脚本/CI/AI）判成败用退出码，究原因读输出。
+        # 命令显式返回 False 视为失败 → exit 1；返回 None/True/其他真值（含正常结果数据）→ exit 0。
+        if result is False:
+            sys.exit(1)
+
+    def _print_caller_version(self) -> None:
+        """
+        打印调用方包的名称与版本（``--version`` / ``-v`` 即退标记的落点）。
+
+        包名经 :func:`~pykunlun.envinfo.pkginfo.get_caller_top_package_name` 从调用栈
+        识别（如 ``python -m baibao`` 识别为 ``baibao``，所有基于本框架的 CLI 通用）；
+        版本取自已安装的分发元数据（importlib.metadata，单一真相源为构建时的
+        pyproject）。查不到分发元数据（如源码树直接运行）时回退 ``(版本未知)``
+        而非报错——版本查询本身不应失败。
+        """
+        pkg = pkginfo.get_caller_top_package_name()
+        try:
+            pkg_version = version(pkg)
+        except PackageNotFoundError:
+            pkg_version = "(版本未知)"
+        print(f"{pkg} {pkg_version}")

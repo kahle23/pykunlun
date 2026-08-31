@@ -16,8 +16,10 @@ RapidOCR 策略实现模块（轻量本地默认实现）。
 图片加载、结果清洗、识别编排放由基类 :class:`OcrEngine` 通用流程统一处理。
 
 延迟加载：本模块顶部**不导入 rapidocr / onnxruntime**，仅在 :meth:`RapidOcr.__init__`
-内按需导入，保证 ``import pykunlun.ai.ocr`` 时不连带加载重依赖（即便未安装 rapidocr
-也能正常 import 本模块的类型，仅在实例化 :class:`RapidOcr` 时才会报 ``ImportError``）。
+内按需导入，保证 ``import pykunlun.ai.ocr`` 时不连带加载重依赖。未安装 rapidocr /
+onnxruntime 时，首次实例化会通过 ``pykunlun.system.pip`` **自动安装**（镜像顺序同
+``DEFAULT_MIRRORS``，与 baibao 的 EasyOcr / PaddleOcr 同策略），自动安装失败才抛
+``ImportError``。
 """
 
 from typing import TYPE_CHECKING
@@ -68,8 +70,8 @@ class RapidOcr(OcrEngine):
         results = ocr.recognize_with_details("image.png")
 
     Raises:
-        ImportError: rapidocr 未安装。请先 ``pip install pykunlun[rapidocr]``
-            或 ``pip install rapidocr onnxruntime``。
+        ImportError: rapidocr / onnxruntime 未安装且**自动安装失败**（如断网、镜像不可达）。
+            可手动 ``pip install pykunlun[rapidocr]`` 或 ``pip install rapidocr onnxruntime``。
     """
 
     engine_type = 'rapid'
@@ -88,12 +90,20 @@ class RapidOcr(OcrEngine):
 
         try:
             from rapidocr import RapidOCR
+            import onnxruntime  # noqa: F401  默认推理后端；缺失时一并触发自动安装
         except ImportError as e:
-            raise ImportError(
-                "rapidocr 未安装，无法初始化 RapidOcr。\n"
-                "请先安装：pip install pykunlun[rapidocr]\n"
-                "或直接：pip install rapidocr onnxruntime"
-            ) from e
+            # 缺依赖自动安装（与 baibao EasyOcr / PaddleOcr 同策略），
+            # 走 kunlun pip 工具的镜像顺序（DEFAULT_MIRRORS）；已装的包 pip 会跳过。
+            from pykunlun.system import pip as kl_pip
+
+            _ok, _fail = kl_pip.install(['rapidocr', 'onnxruntime'])
+            if _fail:
+                raise ImportError(
+                    f"rapidocr / onnxruntime 未安装，自动安装失败: {_fail}\n"
+                    "请手动运行: pip install rapidocr onnxruntime\n"
+                    "或: pip install pykunlun[rapidocr]"
+                ) from e
+            from rapidocr import RapidOCR
 
         # 默认配置：PP-OCRv6 small + onnxruntime CPU + 中英文（rapidocr>=3.9.0）。
         # 包体内置模型，无需联网下载。

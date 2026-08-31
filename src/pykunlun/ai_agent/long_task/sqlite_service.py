@@ -31,6 +31,8 @@ from .state import (
     VALID_EVENT_LEVELS,
     VALID_EVENT_TYPES,
     VALID_STEP_TYPES,
+    deps_satisfied,
+    parse_depends_on,
     step_disposition_on_fail,
 )
 
@@ -170,12 +172,22 @@ class SqliteLongTaskService(LongTaskService):
         )
     # endregion
 
-    # region ======== 建表（幂等） ========
+    # region ======== 建表（幂等）与补列迁移 ========
     def setup(self) -> None:
-        """幂等建 ``ai_task_*`` 六张表 + 索引（首版无老库，不做补列迁移）。"""
+        """幂等建 ``ai_task_*`` 六张表 + 索引，并给老库自动补新增列（幂等可重复执行）。"""
         with self._conn() as conn:
             self._ddl_all(conn)
+            self._migrate(conn)
         log.info("SqliteLongTaskService 已初始化 6 张 ai_task_* 表 (db=%s)", self._db_path)
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """轻量补列迁移：CREATE TABLE IF NOT EXISTS 不会给已存在的表补新列，
+        此处按 ``PRAGMA table_info`` 探测缺列并 ALTER（0.0.5 起的机制，新增列在此登记）。"""
+        t = self._t('ai_task_step')
+        cols = {r['name'] for r in self._q(conn, f'PRAGMA table_info({t})')}
+        if cols and 'depends_on' not in cols:
+            conn.execute(f'ALTER TABLE {t} ADD COLUMN depends_on TEXT')
+            log.info("已补列 %s.depends_on", t)
 
     def _ddl_all(self, conn: sqlite3.Connection) -> None:
         p = self._prefix
@@ -219,6 +231,7 @@ class SqliteLongTaskService(LongTaskService):
             retry_count INTEGER NOT NULL DEFAULT 0,
             max_retries INTEGER NOT NULL DEFAULT 1,
             timeout_sec INTEGER,
+            depends_on TEXT,
             result_summary TEXT,
             started_at TEXT,
             finished_at TEXT,
@@ -437,6 +450,24 @@ class SqliteLongTaskService(LongTaskService):
         if step.step_type not in VALID_STEP_TYPES:
             raise ValueError(
                 f"非法的 step_type: {step.step_type!r}（合法值: {sorted(VALID_STEP_TYPES)}）")
+        if step.depends_on is not None:
+            deps = step.depends_on
+            if not isinstance(deps, list) or any(
+                    isinstance(v, bool) or not isinstance(v, int) for v in deps):
+                raise ValueError(
+                    f"步骤 {step.name!r} 的 depends_on 须为 int 列表（依赖步骤的 seq）")
+            if len(set(deps)) != len(deps):
+                raise ValueError(f"步骤 {step.name!r} 的 depends_on 含重复 seq")
+
+    def _check_deps_vs_seq(self, step: TaskStep, seq: int) -> None:
+        """seq 取号后校验依赖方向：只能依赖同任务更早的 seq（防环/防自依赖）。"""
+        if not step.depends_on:
+            return
+        bad = [d for d in step.depends_on if d <= 0 or d >= seq]
+        if bad:
+            raise ValueError(
+                f"步骤 {step.name!r} 的 depends_on 只能引用同任务更早的 seq "
+                f"（非法: {bad}，自身 seq={seq}）")
 
     def _resolve_step_defaults(self, conn: sqlite3.Connection, step: TaskStep) -> tuple[int, int]:
         """补全 seq（缺省 max+1）与 max_retries（缺省继承任务），返回 (seq, max_retries)。"""
@@ -461,15 +492,17 @@ class SqliteLongTaskService(LongTaskService):
         cur = conn.execute(
             f'INSERT INTO {self._t("ai_task_step")} '
             f'(task_id, seq, name, step_type, instruction, status, retry_count, max_retries, '
-            f'timeout_sec, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+            f'timeout_sec, depends_on, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
             (step.task_id, seq, step.name, step.step_type, step.instruction, 'pending',
-             step.retry_count, max_retries, step.timeout_sec, now, now))
+             step.retry_count, max_retries, step.timeout_sec, _jdump(step.depends_on),
+             now, now))
         return self._lastrowid(cur)
 
     def add_step(self, step: TaskStep) -> int:
         self._validate_step(step)
         with self._conn() as conn:
             seq, mr = self._resolve_step_defaults(conn, step)
+            self._check_deps_vs_seq(step, seq)
             step_id = self._insert_step(conn, step, seq, mr)
             self._event(conn, step.task_id, 'note',
                         f'step added: seq={seq} {step.name} (step_id={step_id})')
@@ -495,6 +528,7 @@ class SqliteLongTaskService(LongTaskService):
                 if seq <= base:
                     raise ValueError(f"步骤 {s.name!r} 的 seq={seq} 与前序冲突（当前最大 {base}）")
                 base = seq
+                self._check_deps_vs_seq(s, seq)
                 mr = s.max_retries
                 if mr is None:
                     task = self._fetch_task(conn, s.task_id)
@@ -550,7 +584,7 @@ class SqliteLongTaskService(LongTaskService):
                             'task: running → completed (剩余步骤全部跳过)')
         return True
 
-    def retry_step(self, id: int) -> bool:
+    def retry_step(self, id: int, force: bool = False) -> bool:
         now = datetime.now()
         with self._conn() as conn:
             rows = self._q(conn, f'SELECT * FROM {self._t("ai_task_step")} WHERE id = ?', (id,))
@@ -558,26 +592,34 @@ class SqliteLongTaskService(LongTaskService):
                 log.warning("retry 未找到步骤 id=%s", id)
                 return False
             step = rows[0]
-            if step['status'] not in ('failed', 'skipped'):
-                log.warning("步骤 id=%s 状态为 %s，仅 failed/skipped 可 retry", id, step['status'])
+            allowed = ('failed', 'skipped', 'succeeded') if force else ('failed', 'skipped')
+            if step['status'] not in allowed:
+                log.warning("步骤 id=%s 状态为 %s，仅 failed/skipped 可 retry%s",
+                            id, step['status'], "（force 可加 succeeded）" if not force else "")
                 return False
+            clear_summary = force and step['status'] == 'succeeded'
+            sets = ('status = ?, max_retries = max_retries + 1, updated_at = ?'
+                    if not clear_summary else
+                    'status = ?, max_retries = max_retries + 1, result_summary = NULL, '
+                    'finished_at = NULL, updated_at = ?')
             conn.execute(
-                f'UPDATE {self._t("ai_task_step")} '
-                f'SET status = ?, max_retries = max_retries + 1, updated_at = ? WHERE id = ?',
+                f'UPDATE {self._t("ai_task_step")} SET {sets} WHERE id = ?',
                 ('pending', _iso(now), id))
+            tag = 'manual retry, budget+1' + (', force' if force else '')
             self._event(conn, step['task_id'], 'state_change',
-                        f'step {id}: {step["status"]} → pending (manual retry, budget+1)',
-                        step_id=id)
-            # 任务因该步骤失败时，一并复活为 running，等下次 claim 继续
+                        f'step {id}: {step["status"]} → pending ({tag})', step_id=id)
+            # 任务已终态且可归因于该步骤时一并复活（failed 常规；completed 仅 force——
+            # 正常收口不会 failed，被改库伪造的 completed 需随假成功修复一起回 running）
             task = self._fetch_task(conn, step['task_id'])
-            if task is not None and task['status'] == 'failed':
+            revive_from = ('failed', 'completed') if force else ('failed',)
+            if task is not None and task['status'] in revive_from:
                 conn.execute(
                     f'UPDATE {self._t("ai_task_instance")} '
                     f'SET status = ?, finished_at = NULL, heartbeat_at = ?, updated_at = ? '
                     f'WHERE id = ? AND status = ?',
-                    ('running', _iso(now), _iso(now), task['id'], 'failed'))
+                    ('running', _iso(now), _iso(now), task['id'], task['status']))
                 self._event(conn, task['id'], 'state_change',
-                            'task: failed → running (manual retry revive)')
+                            f'task: {task["status"]} → running (manual retry revive)')
         return True
     # endregion
 
@@ -587,6 +629,7 @@ class SqliteLongTaskService(LongTaskService):
         task_id: int,
         session_id: str | None = None,
         agent_name: str | None = None,
+        ignore_deps: bool = False,
     ) -> dict[str, Any] | None:
         t_task = self._t('ai_task_instance')
         t_step = self._t('ai_task_step')
@@ -602,10 +645,29 @@ class SqliteLongTaskService(LongTaskService):
             for _ in range(3):
                 cands = self._q(
                     conn, f'SELECT * FROM {t_step} WHERE task_id = ? AND status = ? '
-                          f'ORDER BY seq LIMIT 1', (task_id, 'pending'))
+                          f'ORDER BY seq', (task_id, 'pending'))
                 if not cands:
                     return None
-                cand = cands[0]
+                # 依赖感知候选选取：任务内任一步骤声明了 depends_on 时启用，
+                # 按 seq 升序取第一个依赖就绪的 pending；无声明保持旧行为（seq 最小）
+                cand = None
+                if not ignore_deps:
+                    all_steps = self._q(
+                        conn, f'SELECT seq, status, depends_on FROM {t_step} '
+                              f'WHERE task_id = ?', (task_id,))
+                    dep_aware = any(parse_depends_on(s['depends_on']) for s in all_steps)
+                    if dep_aware:
+                        status_by_seq = {s['seq']: s['status'] for s in all_steps}
+                        cand = next(
+                            (c for c in cands
+                             if deps_satisfied(parse_depends_on(c['depends_on']),
+                                               status_by_seq)), None)
+                        if cand is None:
+                            log.info("任务 id=%s 的 pending 步骤依赖均未就绪，暂无可认领",
+                                     task_id)
+                            return None
+                if cand is None:
+                    cand = cands[0]
                 affected = conn.execute(
                     f'UPDATE {t_step} SET status = ?, started_at = COALESCE(started_at, ?), '
                     f'updated_at = ? WHERE id = ? AND status = ?',
@@ -755,6 +817,42 @@ class SqliteLongTaskService(LongTaskService):
     def list_runs(self, step_id: int) -> list[dict[str, Any]]:
         return self._query(
             f'SELECT * FROM {self._t("ai_task_run")} WHERE step_id = ? ORDER BY id', (step_id,))
+
+    def list_task_runs(self, task_id: int) -> list[dict[str, Any]]:
+        return self._query(
+            f'SELECT * FROM {self._t("ai_task_run")} WHERE task_id = ? ORDER BY id', (task_id,))
+
+    def release_run(self, run_id: int, reason: str = '') -> str:
+        now = datetime.now()
+        with self._conn() as conn:
+            runs = self._q(conn, f'SELECT * FROM {self._t("ai_task_run")} WHERE id = ?', (run_id,))
+            if not runs:
+                log.warning("release 未找到 run id=%s", run_id)
+                return ''
+            run = runs[0]
+            if run['status'] != 'running':
+                log.warning("run id=%s 已终态(%s)，忽略 release", run_id, run['status'])
+                return ''
+            conn.execute(
+                f'UPDATE {self._t("ai_task_run")} SET status = ?, error_msg = ?, finished_at = ? '
+                f'WHERE id = ? AND status = ?',
+                ('cancelled', 'released' + (f': {reason}' if reason else ''),
+                 _iso(now), run_id, 'running'))
+            self._event(conn, run['task_id'], 'state_change',
+                        f'run {run_id}: running → cancelled '
+                        f'(release{": " + reason if reason else ""})',
+                        step_id=run['step_id'], run_id=run_id)
+            # 步骤还回队列：不加 retry_count（释放 ≠ 失败，不消耗重试预算）
+            affected = conn.execute(
+                f'UPDATE {self._t("ai_task_step")} SET status = ?, updated_at = ? '
+                f'WHERE id = ? AND status = ?',
+                ('pending', _iso(now), run['step_id'], 'running')).rowcount
+            if affected:
+                self._event(conn, run['task_id'], 'state_change',
+                            f"step {run['step_id']}: running → pending (released, 预算不变)",
+                            step_id=run['step_id'])
+            self._touch_heartbeat(conn, run['task_id'])
+        return 'released'
     # endregion
 
     # region ======== 恢复（sweep） ========
@@ -907,6 +1005,153 @@ class SqliteLongTaskService(LongTaskService):
             if results:
                 log.info("sweep 恢复了 %d 个对象", len(results))
         return results
+
+    def verify_task(self, task_id: int, fix: bool = False) -> list[dict[str, Any]]:
+        t_task = self._t('ai_task_instance')
+        t_step = self._t('ai_task_step')
+        t_run = self._t('ai_task_run')
+        t_event = self._t('ai_task_event')
+        now = datetime.now()
+        findings: list[dict[str, Any]] = []
+        with self._conn() as conn:
+            task = self._fetch_task(conn, task_id)
+            if task is None:
+                raise ValueError(f"任务不存在: id={task_id}")
+            steps = self._q(conn, f'SELECT * FROM {t_step} WHERE task_id = ? ORDER BY seq',
+                            (task_id,))
+            runs = self._q(conn, f'SELECT * FROM {t_run} WHERE task_id = ?', (task_id,))
+            events = self._q(conn, f'SELECT message FROM {t_event} WHERE task_id = ?',
+                             (task_id,))
+            event_msgs = [e['message'] for e in events]
+            runs_by_step: dict[int, list[dict[str, Any]]] = {}
+            for r in runs:
+                runs_by_step.setdefault(r['step_id'], []).append(r)
+            step_by_id = {s['id']: s for s in steps}
+
+            def has_event(sid: int, fragment: str) -> bool:
+                return any(m.startswith(f'step {sid}: ') and fragment in m
+                           for m in event_msgs)
+
+            def running_runs(sid: int) -> list[dict[str, Any]]:
+                return [r for r in runs_by_step.get(sid, []) if r['status'] == 'running']
+
+            for s in steps:
+                sid = s['id']
+                if s['status'] == 'succeeded':
+                    # V1 假成功：真完成须同时有 succeeded run 与 finish 事件（SQL 直刷
+                    # 不产生二者）。修复取向：有活 run 接管为 running，否则回 pending。
+                    ok_run = any(r['status'] == 'succeeded' for r in runs_by_step.get(sid, []))
+                    ok_event = has_event(sid, 'running → succeeded')
+                    if ok_run and ok_event:
+                        continue
+                    detail = ('假成功（缺 succeeded run' +
+                              ('' if ok_event and ok_run else
+                               '与 finish 事件' if ok_run else '，缺 finish 事件' if ok_event
+                               else '与 finish 事件') + '）')
+                    finding = {'rule': 'V1', 'level': 'error', 'kind': 'step', 'id': sid,
+                               'detail': detail, 'fixed': None}
+                    findings.append(finding)
+                    if fix:
+                        live = running_runs(sid)
+                        if live:
+                            conn.execute(
+                                f'UPDATE {t_step} SET status = ?, result_summary = NULL, '
+                                f'updated_at = ? WHERE id = ? AND status = ?',
+                                ('running', _iso(now), sid, 'succeeded'))
+                            self._event(conn, task_id, 'state_change',
+                                        f'step {sid}: succeeded → running '
+                                        f'(verify fix, 接管活 run)', step_id=sid)
+                        else:
+                            conn.execute(
+                                f'UPDATE {t_step} SET status = ?, result_summary = NULL, '
+                                f'finished_at = NULL, updated_at = ? '
+                                f'WHERE id = ? AND status = ?',
+                                ('pending', _iso(now), sid, 'succeeded'))
+                            self._event(conn, task_id, 'state_change',
+                                        f'step {sid}: succeeded → pending '
+                                        f'(verify fix, 清假摘要)', step_id=sid)
+                        finding['fixed'] = True
+                elif s['status'] == 'running':
+                    # V2 僵尸步骤：状态在跑但没有任何 running run 支撑
+                    if not running_runs(sid):
+                        finding = {'rule': 'V2', 'level': 'error', 'kind': 'step', 'id': sid,
+                                   'detail': 'running 但无任何 running run（无执行支撑）',
+                                   'fixed': None}
+                        findings.append(finding)
+                        if fix:
+                            conn.execute(
+                                f'UPDATE {t_step} SET status = ?, updated_at = ? '
+                                f'WHERE id = ? AND status = ?',
+                                ('pending', _iso(now), sid, 'running'))
+                            self._event(conn, task_id, 'state_change',
+                                        f'step {sid}: running → pending '
+                                        f'(verify fix, 清无支撑的 running)', step_id=sid)
+                            finding['fixed'] = True
+                elif s['status'] == 'skipped':
+                    # V6 无 skip 事件的 skipped：来源不明（仅告警，不动状态）
+                    if not has_event(sid, '→ skipped'):
+                        findings.append({'rule': 'V6', 'level': 'info', 'kind': 'step',
+                                         'id': sid, 'detail': 'skipped 但无 skip 事件（来源不明）',
+                                         'fixed': None})
+            # V1/V2 修复会改动步骤状态，V3/V4/V5 须基于**修复后**的最新状态判定——重查
+            steps = self._q(conn, f'SELECT * FROM {t_step} WHERE task_id = ? ORDER BY seq',
+                            (task_id,))
+            step_by_id = {s['id']: s for s in steps}
+            # V3 孤儿 run：仍在 running 但所属步骤已不在 running
+            for r in runs:
+                if r['status'] != 'running':
+                    continue
+                st = step_by_id.get(r['step_id'])
+                if st is not None and st['status'] == 'running':
+                    continue
+                finding = {'rule': 'V3', 'level': 'warn', 'kind': 'run', 'id': r['id'],
+                           'detail': f'run 仍在 running，但所属步骤状态为 '
+                                     f'{st["status"] if st else "不存在"}',
+                           'fixed': None}
+                findings.append(finding)
+                if fix:
+                    conn.execute(
+                        f'UPDATE {t_run} SET status = ?, error_msg = ?, finished_at = ? '
+                        f'WHERE id = ? AND status = ?',
+                        ('cancelled', 'verify: 孤儿 run', _iso(now), r['id'], 'running'))
+                    self._event(conn, task_id, 'state_change',
+                                f'run {r["id"]}: running → cancelled (verify fix, 孤儿 run)',
+                                step_id=r['step_id'], run_id=r['id'])
+                    finding['fixed'] = True
+            # V4 伪造指纹：≥3 个步骤共享同一段非空 result_summary（直刷脚本常粘贴同一段话）
+            counter: dict[str, int] = {}
+            for s in steps:
+                if s['result_summary']:
+                    counter[s['result_summary']] = counter.get(s['result_summary'], 0) + 1
+            for summ, n in counter.items():
+                if n >= 3:
+                    findings.append({'rule': 'V4', 'level': 'warn', 'kind': 'task', 'id': task_id,
+                                     'detail': f'{n} 个步骤共享同一 result_summary（伪造指纹）'
+                                               f'：{summ[:80]}', 'fixed': None})
+            # V5 收口失真：任务 completed 但存在未终态步骤
+            if task['status'] == 'completed':
+                bad = [s['id'] for s in steps if s['status'] in ('pending', 'running', 'failed')]
+                if bad:
+                    finding = {'rule': 'V5', 'level': 'error', 'kind': 'task', 'id': task_id,
+                               'detail': f'task completed 但存在未终态步骤: {bad}', 'fixed': None}
+                    findings.append(finding)
+                    if fix:
+                        conn.execute(
+                            f'UPDATE {t_task} SET status = ?, finished_at = NULL, '
+                            f'updated_at = ? WHERE id = ? AND status = ?',
+                            ('running', _iso(now), task_id, 'completed'))
+                        self._event(conn, task_id, 'state_change',
+                                    'task: completed → running (verify fix, 收口失真回退)')
+                        finding['fixed'] = True
+            if fix and any(f['fixed'] for f in findings):
+                n_fixed = sum(1 for f in findings if f['fixed'])
+                self._event(conn, task_id, 'note', f'verify fix: 修复 {n_fixed} 处不一致',
+                            level='warn')
+                self._touch_heartbeat(conn, task_id)
+        if findings:
+            log.info("verify task=%s 发现 %d 处异常%s", task_id, len(findings),
+                     '，已修复' if fix else '')
+        return findings
     # endregion
 
     # region ======== 产物 / 事件 ========

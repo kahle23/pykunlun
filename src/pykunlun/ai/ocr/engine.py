@@ -228,7 +228,10 @@ class OcrEngine(ABC):
         if isinstance(image, str):
             if not os.path.exists(image):
                 raise FileNotFoundError(f"图片文件不存在: {image}")
-            img = cv2.imread(image)
+            # cv2.imread 在 Windows 上对含非 ASCII 字符（如中文文件名）的路径会静默
+            # 返回 None（底层经 ANSI 代码页打开文件）；np.fromfile 走 Unicode 文件 API
+            # 读字节、cv2.imdecode 解码，等价 imread 默认的 IMREAD_COLOR，任何代码页下稳定。
+            img = cv2.imdecode(np.fromfile(image, dtype=np.uint8), cv2.IMREAD_COLOR)
             if img is None:
                 raise ValueError(
                     f"无法读取图片文件，请检查文件是否损坏或格式是否支持: {image}"
@@ -355,7 +358,12 @@ class OcrEngine(ABC):
             )
 
         if output_path:
-            cv2.imwrite(output_path, img)
+            # 同 _load_image：cv2.imwrite 对 Windows 非 ASCII 输出路径会静默失败，
+            # 用 imencode + tofile（Unicode 文件 API）替代，中文路径也能保存。
+            ext = os.path.splitext(output_path)[1] or '.png'
+            ok, buf = cv2.imencode(ext, img)
+            if ok:
+                buf.tofile(output_path)
 
         return img
 

@@ -135,8 +135,8 @@ class LongTaskManager:
     def skip_step(self, id: int, reason: str = '', name: str | None = None) -> bool:
         return self.get_service(name).skip_step(id, reason=reason)
 
-    def retry_step(self, id: int, name: str | None = None) -> bool:
-        return self.get_service(name).retry_step(id)
+    def retry_step(self, id: int, force: bool = False, name: str | None = None) -> bool:
+        return self.get_service(name).retry_step(id, force=force)
     # endregion
 
     # region ======== 执行 ========
@@ -145,10 +145,12 @@ class LongTaskManager:
         task_id: int,
         session_id: str | None = None,
         agent_name: str | None = None,
+        ignore_deps: bool = False,
         name: str | None = None,
     ) -> dict[str, Any] | None:
         return self.get_service(name).claim_next_step(task_id, session_id=session_id,
-                                                      agent_name=agent_name)
+                                                      agent_name=agent_name,
+                                                      ignore_deps=ignore_deps)
 
     def finish_run(
         self,
@@ -169,12 +171,22 @@ class LongTaskManager:
 
     def list_runs(self, step_id: int, name: str | None = None) -> list[dict[str, Any]]:
         return self.get_service(name).list_runs(step_id)
+
+    def list_task_runs(self, task_id: int, name: str | None = None) -> list[dict[str, Any]]:
+        return self.get_service(name).list_task_runs(task_id)
+
+    def release_run(self, run_id: int, reason: str = '', name: str | None = None) -> str:
+        return self.get_service(name).release_run(run_id, reason=reason)
     # endregion
 
     # region ======== 恢复 ========
     def sweep(self, heartbeat_timeout_sec: int | None = None,
               name: str | None = None) -> list[dict[str, Any]]:
         return self.get_service(name).sweep(heartbeat_timeout_sec=heartbeat_timeout_sec)
+
+    def verify_task(self, task_id: int, fix: bool = False,
+                    name: str | None = None) -> list[dict[str, Any]]:
+        return self.get_service(name).verify_task(task_id, fix=fix)
     # endregion
 
     # region ======== 产物 / 事件 ========

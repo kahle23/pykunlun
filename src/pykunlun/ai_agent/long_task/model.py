@@ -144,6 +144,8 @@ class TaskStep:
         id: 主键；新建时为 None，插入后由存储回填。
         created_at: 创建时间；新建时为 None，由存储回填。
         updated_at: 更新时间；新建时为 None，由存储回填。
+        depends_on: 依赖的同任务更早步骤 seq 列表（JSON 数组落 TEXT）；None/空 = 无显式
+            依赖。claim 依赖感知模式下，依赖未全部 succeeded/skipped 的步骤不会被认领。
     """
 
     task_id: int
@@ -161,6 +163,7 @@ class TaskStep:
     id: int | None = field(default=None)
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    depends_on: list[int] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """转为字典（含全部字段，便于序列化输出）。"""

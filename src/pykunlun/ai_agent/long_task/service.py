@@ -181,15 +181,22 @@ class LongTaskService(ABC):
         """
 
     @abstractmethod
-    def retry_step(self, id: int) -> bool:
+    def retry_step(self, id: int, force: bool = False) -> bool:
         """
         手动重置失败/跳过的步骤回 pending（管理动作，绕过自动流转表）。
 
         语义："再给一次机会"——``max_retries + 1`` 后回 pending；若所属任务已因
         该步骤失败（failed），任务一并复活为 running（刷心跳），等下次 claim 继续。
 
+        Args:
+            id: 步骤 id。
+            force: 管理强制开关——True 时额外放行 ``succeeded`` 步骤（用于就地修复
+                被绕过状态机直接改库造成的假完成等异常现场）：步骤回 pending 并清空
+                ``result_summary``；任务若已 ``completed`` 亦一并复活为 running。
+                正常流程不应使用 force。
+
         Returns:
-            是否命中（步骤非 failed/skipped 返回 False）。
+            是否命中（步骤状态不在允许范围返回 False）。
         """
     # endregion
 
@@ -200,17 +207,24 @@ class LongTaskService(ABC):
         task_id: int,
         session_id: str | None = None,
         agent_name: str | None = None,
+        ignore_deps: bool = False,
     ) -> dict[str, Any] | None:
         """
-        原子认领任务的下一个 pending 步骤（seq 最小者），创建 running run。
+        原子认领任务的下一个可执行 pending 步骤，创建 running run。
 
         并发安全靠条件 UPDATE 的受影响行数做乐观锁。认领成功后：插 run（running）、
         任务首次 claim 时 pending → running、刷新心跳、追加事件——同一事务。
+
+        **依赖感知**：任务内任一步骤声明了 ``depends_on``（依赖同任务更早 seq 列表）
+        时，候选按 seq 升序遍历，只认领"依赖全部 succeeded/skipped"的步骤（多执行方
+        并行消费同一任务时天然跳开未就绪的下游）；依赖全部未就绪返回 None。
+        任务无任何 depends_on 声明时保持旧行为（认领 seq 最小 pending）。
 
         Args:
             task_id: 任务 id。
             session_id: 执行会话标识（盖章 run）。
             agent_name: agent 外壳标识（盖章 run）。
+            ignore_deps: 逃生开关——True 时无视依赖声明，按旧行为认领 seq 最小 pending。
 
         Returns:
             **续跑上下文包**（新会话接手所需的全部信息）::
@@ -222,7 +236,7 @@ class LongTaskService(ABC):
                   "context": [{"seq", "name", "result_summary"}, ...]  # 前序成功步骤摘要
                 }
 
-            任务无 pending 步骤（或任务非 pending/running 状态）返回 None，
+            任务无可认领步骤（或任务非 pending/running 状态）返回 None，
             调用方应转 status 查看终态。
         """
 
@@ -269,6 +283,27 @@ class LongTaskService(ABC):
     @abstractmethod
     def list_runs(self, step_id: int) -> list[dict[str, Any]]:
         """按步骤列出全部执行尝试（按 id 升序），返回行字典列表。"""
+
+    @abstractmethod
+    def list_task_runs(self, task_id: int) -> list[dict[str, Any]]:
+        """按任务列出全部执行尝试（按 id 升序），返回行字典列表。"""
+
+    @abstractmethod
+    def release_run(self, run_id: int, reason: str = '') -> str:
+        """
+        释放一次执行（管理动作）：run running → cancelled、所属步骤 running → pending
+        （**不消耗重试预算**，retry_count 不变），任务保持 running 并刷心跳；同一事务。
+
+        适用：执行方会话已结束/派发放弃但工作未完成，把步骤还回队列由其他会话
+        续跑——区别于 :meth:`fail_run`（视作一次失败、消耗预算）。
+
+        Args:
+            run_id: 执行 id。
+            reason: 释放原因（记入事件）。
+
+        Returns:
+            ``'released'``（已释放）或 ``''``（run 不存在或非 running，未流转）。
+        """
     # endregion
 
     # region ======== 恢复 ========
@@ -297,6 +332,34 @@ class LongTaskService(ABC):
             被恢复对象的摘要列表，每项 ``{task_id, step_id, run_id, action, detail}``；
             ``action`` 取值 ``run_timeout / step_retry / step_failed / task_timeout /
             task_failed``（后两类仅在命中任务总超时时出现）。
+        """
+
+    @abstractmethod
+    def verify_task(self, task_id: int, fix: bool = False) -> list[dict[str, Any]]:
+        """
+        一致性对账（防篡改审计）：以事件流水与 run 记录为真相源，核对步骤/任务当前
+        状态的一致性，识别被绕过状态机直接改库造成的异常（如批量伪造 succeeded）。
+
+        规则（每处异常一条发现）::
+
+          V1 step=succeeded 但无对应 succeeded run 或缺 finish 事件 → 假成功；
+             fix 时：有存活 running run 则步骤回 running（接管活执行），否则回
+             pending 并清空 result_summary
+          V2 step=running 但无任何 running run → 僵尸步骤；fix 时回 pending
+          V3 run=running 但所属步骤非 running → 孤儿 run；fix 时置 cancelled
+          V4 ≥3 个步骤 result_summary 完全相同 → 伪造指纹告警（仅报告，不自动修复）
+          V5 task=completed 但存在 pending/running/failed 步骤 → 收口失真；
+             fix 时任务回 running（finished_at 置空）
+          V6 step=skipped 但无对应 skip 事件 → 仅告警
+
+        Args:
+            task_id: 任务 id。
+            fix: 是否就地修复（全部修复动作同一事务执行，并追加一条 warn 级汇总事件留痕）。
+
+        Returns:
+            发现列表，每项 ``{rule, level, kind, id, detail, fixed}``；
+            ``kind`` ∈ ``step/run/task``，``level`` ∈ info/warn/error，
+            ``fixed`` 仅 fix=True 且该发现已修复时为 True。
         """
     # endregion
 
