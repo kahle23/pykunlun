@@ -12,6 +12,7 @@ pykunlun.ai_agent 长任务能力的单元测试。
 """
 
 import os
+import sys
 import tempfile
 
 import pytest
@@ -610,5 +611,79 @@ def test_templates(store):
     assert len(store.list_templates()) == 1
     with pytest.raises(ValueError, match='已存在'):
         store.create_template(TaskTemplate(name='文档任务'))
+
+# endregion
+
+
+# region ======== 无人值守执行（run_task） ========
+
+def _py(code: str) -> str:
+    """跨平台 python -c 命令行（可执行路径加引号，防带空格路径断裂）。"""
+    return f'"{sys.executable}" -c "{code}"'
+
+
+def test_run_task_bash_success(mgr, store):
+    tid = _mk_task(store)
+    store.add_step(TaskStep(task_id=tid, name='好步骤', instruction=_py('print(42)'),
+                            step_type='bash', seq=1))
+    rows = mgr.run_task(tid)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r['status'] == 'succeeded' and r['exit_code'] == 0
+    assert r['step_type'] == 'bash' and r['duration_sec'] is not None
+    assert mgr.get_task(tid).status == 'completed'
+
+
+def test_run_task_bash_fail_budget_flow(mgr, store):
+    tid = _mk_task(store, max_retries=1)
+    store.add_step(TaskStep(task_id=tid, name='坏步骤',
+                            instruction=_py('import sys; sys.exit(3)'),
+                            step_type='bash', seq=1))
+    rows1 = mgr.run_task(tid)          # 第一轮：失败，预算内回 pending，不自动重跑
+    assert rows1[0]['status'] == 'retried' and rows1[0]['exit_code'] == 3
+    assert mgr.list_steps(tid)[0]['status'] == 'pending'
+    rows2 = mgr.run_task(tid)          # 第二轮：重试仍失败 → 预算耗尽终败
+    assert rows2[0]['status'] == 'failed'
+    assert mgr.get_task(tid).status == 'failed'
+
+
+def test_run_task_timeout_kills_tree(mgr, store):
+    tid = _mk_task(store)
+    store.add_step(TaskStep(task_id=tid, name='卡死步骤',
+                            instruction=_py('import time; time.sleep(60)'),
+                            step_type='bash', seq=1, timeout_sec=2))
+    rows = mgr.run_task(tid)
+    r = rows[0]
+    assert r['status'] == 'failed' and r['exit_code'] is None
+    assert r['duration_sec'] < 30          # 2s 超时即杀，不等 60s
+    assert 'timeout' in (r['summary'] or '')
+
+
+def test_run_task_agent_release_and_stop(mgr, store):
+    tid = _mk_task(store)
+    store.add_step(TaskStep(task_id=tid, name='脚本步骤', instruction=_py('print(1)'),
+                            step_type='bash', seq=1))
+    store.add_step(TaskStep(task_id=tid, name='AI 步骤', instruction='需要 AI 判断',
+                            step_type='agent', seq=2))
+    store.add_step(TaskStep(task_id=tid, name='后续脚本', instruction=_py('print(2)'),
+                            step_type='bash', seq=3))
+    rows = mgr.run_task(tid)               # 跑完 bash 撞上 agent → release 并停
+    assert [r['status'] for r in rows] == ['succeeded', 'released']
+    steps = {s['name']: s for s in mgr.list_steps(tid)}
+    assert steps['脚本步骤']['status'] == 'succeeded'
+    assert steps['AI 步骤']['status'] == 'pending'     # release 不烧预算
+    assert steps['后续脚本']['status'] == 'pending'    # 停在 AI 步骤，不越级执行
+    mgr.skip_step(steps['AI 步骤']['id'])              # 模拟 AI 接手后放行
+    rows2 = mgr.run_task(tid)
+    assert [r['status'] for r in rows2] == ['succeeded']
+    assert mgr.get_task(tid).status == 'completed'
+
+
+def test_run_task_empty_instruction_guarded(store):
+    # service 层落库即拒空 instruction；manager 侧的空命令兜底分支防运行时数据被外部改坏
+    tid = _mk_task(store)
+    with pytest.raises(ValueError, match='instruction 不能为空'):
+        store.add_step(TaskStep(task_id=tid, name='空命令', instruction='   ',
+                                step_type='bash', seq=1))
 
 # endregion
