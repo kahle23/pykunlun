@@ -22,7 +22,7 @@ onnxruntime 时，首次实例化会通过 ``pykunlun.system.pip`` **自动安�
 ``ImportError``。
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pykunlun.util import logutil
 
@@ -30,7 +30,7 @@ from .engine import OcrEngine
 from .model import OcrCfg, OcrResult
 
 if TYPE_CHECKING:
-    import numpy as np
+    import numpy.typing as npt
 
 log = logutil.getLogger(__name__)
 
@@ -89,8 +89,8 @@ class RapidOcr(OcrEngine):
         super().__init__(cfg)
 
         try:
-            from rapidocr import RapidOCR
             import onnxruntime  # noqa: F401  默认推理后端；缺失时一并触发自动安装
+            from rapidocr import RapidOCR
         except ImportError as e:
             # 缺依赖自动安装（与 baibao EasyOcr / PaddleOcr 同策略），
             # 走 kunlun pip 工具的镜像顺序（DEFAULT_MIRRORS）；已装的包 pip 会跳过。
@@ -114,7 +114,7 @@ class RapidOcr(OcrEngine):
 
     # region ======== OcrEngine 实现 ========
 
-    def _recognize_array(self, image: 'np.ndarray') -> list[OcrResult]:
+    def _recognize_array(self, image: 'npt.NDArray[Any]') -> list[OcrResult]:
         """
         调用 RapidOCR 识别图像数组。
 

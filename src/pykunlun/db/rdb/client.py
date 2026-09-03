@@ -8,6 +8,7 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from types import ModuleType
 from typing import Any
 
 from pykunlun.util import logutil, validation
@@ -159,8 +160,8 @@ class RdbClient(ABC):
         if not cfg.validation_query:
             cfg.validation_query = 'SELECT 1'
 
-    def _normalize_rows(self, cursor, rows: list,
-                        converters: dict[type, Callable[[Any], Any]] | None = None) -> list[dict]:
+    def _normalize_rows(self, cursor: Any, rows: list[Any],
+                        converters: dict[type, Callable[[Any], Any]] | None = None) -> list[dict[str, Any]]:
         """
         将查询结果行整形为字典列表。
 
@@ -185,10 +186,10 @@ class RdbClient(ABC):
             return []
 
         # 值转换器：按类型匹配转换函数，保持原样
-        def _convert(d: dict) -> dict:
+        def _convert(d: dict[str, Any]) -> dict[str, Any]:
             if not converters:
                 return d
-            result: dict = {}
+            result: dict[str, Any] = {}
             for k, v in d.items():
                 # None 值不参与转换（保持原样）
                 if v is None:
@@ -235,7 +236,7 @@ class RdbClient(ABC):
         pass
 
     @abstractmethod
-    def get_driver(self):
+    def get_driver(self) -> ModuleType:
         """
         获取数据库驱动模块。
 
@@ -261,7 +262,7 @@ class RdbClient(ABC):
         """
         pass
 
-    def is_connection_open(self, connection) -> bool:
+    def is_connection_open(self, connection: Any) -> bool:
         """
         判断连接是否处于打开状态。
 
@@ -280,7 +281,7 @@ class RdbClient(ABC):
             return not bool(connection.closed)
         return True
 
-    def get_connection(self):
+    def get_connection(self) -> Any:
         """
         打开并返回一个新的数据库连接。
 
@@ -299,7 +300,7 @@ class RdbClient(ABC):
         return driver.connect(**self.build_connect_kwargs())
 
     def query(self, sql: str, params: tuple[Any, ...] | None = None,
-              converters: dict[type, Callable[[Any], Any]] | None = None) -> list[dict]:
+              converters: dict[type, Callable[[Any], Any]] | None = None) -> list[dict[str, Any]]:
         """
         执行查询并返回结果（自动管理连接生命周期）。
 

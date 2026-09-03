@@ -9,7 +9,7 @@ import sys
 from collections.abc import Callable, MutableMapping
 from typing import Any
 
-from pykunlun.core.context import Context, ContextHolder
+from pykunlun.context import Context, ContextHolder
 from pykunlun.envinfo import pkginfo
 
 

@@ -7,6 +7,7 @@
 
 import importlib
 from collections.abc import Callable
+from types import ModuleType
 from typing import Any
 
 from ..system import pip
@@ -15,7 +16,7 @@ from . import logutil
 log = logutil.getLogger(__name__)
 
 
-def import_module(module_name: str, install_name: str | None = None):
+def import_module(module_name: str, install_name: str | None = None) -> ModuleType:
     """
     动态导入模块，未安装时自动安装。
 

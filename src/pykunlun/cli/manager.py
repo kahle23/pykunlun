@@ -5,6 +5,7 @@
 :meth:`CommandManager.main_cli`。
 """
 
+import importlib.util
 import sys
 import threading
 from collections.abc import Callable
@@ -14,6 +15,25 @@ from typing import Any, Optional
 from pykunlun.cli.command import Command, CommandNotFoundError, HelpCommand
 from pykunlun.cli.context import CliContext, cli_context_holder
 from pykunlun.envinfo import pkginfo
+
+
+def _format_help_hint(help_name: str) -> str:
+    """
+    拼接「如何查看帮助」提示。
+
+    仅当从调用栈识别出的调用方包确实提供 ``__main__`` 子模块（``python -m X``
+    入口真实可用）时才提示 ``python -m X help`` 形式；否则退化为中性提示
+    ``help``。本库（pykunlun）自身是纯编程库、不提供命令行入口，裸脚本/
+    测试直跑等识别不到外部调用方的场景同样不应指向不存在的入口。
+    """
+    caller_pkg = pkginfo.get_caller_top_package_name()
+    try:
+        has_main_entry = importlib.util.find_spec(f'{caller_pkg}.__main__') is not None
+    except (ImportError, ValueError):
+        has_main_entry = False
+    if has_main_entry:
+        return f"使用 'python -m {caller_pkg} {help_name}' 查看可用命令"
+    return f"使用 '{help_name}' 查看可用命令"
 
 
 class CommandManager:
@@ -242,7 +262,7 @@ class CommandManager:
                     help_command = self.get_help_command()
                     help_name = help_command.name if help_command else "help"
                     print(str(e))
-                    print(f"使用 'python -m {pkginfo.get_caller_top_package_name()} {help_name}' 查看可用命令")
+                    print(_format_help_hint(help_name))
                     # 命令不存在 → 通用失败 exit 1（退出码总约定见 main_cli 末尾注释）
                     sys.exit(1)
             finally:

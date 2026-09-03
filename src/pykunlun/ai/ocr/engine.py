@@ -25,7 +25,7 @@ from pykunlun.util import logutil
 from .model import OcrCfg, OcrResult
 
 if TYPE_CHECKING:
-    import numpy as np
+    import numpy.typing as npt
 
 log = logutil.getLogger(__name__)
 
@@ -177,7 +177,7 @@ class OcrEngine(ABC):
     # region ======== 引擎差异钩子 ========
 
     @abstractmethod
-    def _recognize_array(self, image: 'np.ndarray') -> list[OcrResult]:
+    def _recognize_array(self, image: 'npt.NDArray[Any]') -> list[OcrResult]:
         """
         对已加载的图像数组执行 OCR 识别（子类唯一需实现的核心方法）。
 
@@ -199,7 +199,7 @@ class OcrEngine(ABC):
 
     # region ======== 图片加载与结果清洗（可覆写钩子） ========
 
-    def _load_image(self, image: Union[str, 'np.ndarray']) -> 'np.ndarray':
+    def _load_image(self, image: Union[str, 'npt.NDArray[Any]']) -> 'npt.NDArray[Any]':
         """
         将输入统一加载为 OpenCV 图像数组（**可覆写钩子**）。
 
@@ -272,7 +272,7 @@ class OcrEngine(ABC):
 
     # region ======== 通用识别接口（模板方法） ========
 
-    def recognize(self, image: Union[str, 'np.ndarray']) -> str:
+    def recognize(self, image: Union[str, 'npt.NDArray[Any]']) -> str:
         """
         识别图片中的文字，返回纯文本结果。
 
@@ -292,7 +292,7 @@ class OcrEngine(ABC):
         return '\n'.join(r.text for r in results)
 
     def recognize_with_details(
-        self, image: Union[str, 'np.ndarray']
+        self, image: Union[str, 'npt.NDArray[Any]']
     ) -> list[OcrResult]:
         """
         识别图片中的文字，返回包含位置与置信度的详细结果。
@@ -313,11 +313,11 @@ class OcrEngine(ABC):
 
     def recognize_and_draw(
         self,
-        image: Union[str, 'np.ndarray'],
+        image: Union[str, 'npt.NDArray[Any]'],
         color: tuple[int, int, int] = (0, 255, 0),
         thickness: int | None = None,
         output_path: str | None = None,
-    ) -> 'np.ndarray':
+    ) -> 'npt.NDArray[Any]':
         """
         识别图片中的文字，并在图片上绘制边界框与文本标签。
 

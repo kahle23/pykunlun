@@ -1,30 +1,30 @@
 """
-长任务服务策略抽象基类。
+计划任务服务策略抽象基类。
 
-:class:`LongTaskService` 定义跨后端（sqlite / mysql / 未来 http）的统一接口，
+:class:`PlanTaskService` 定义跨后端（sqlite / mysql / 未来 http）的统一接口，
 对标 :class:`pykunlun.ai_agent.memory.MemoryStore` 的角色，但命名为 **Service**
 而非 Store：接口方法不是纯存储操作——claim_next_step / finish_run / fail_run /
 sweep 是带事务语义与事件留痕的**业务编排操作**（这正是设计文档"抽象层方法必须
 是业务级粗粒度"的体现）；且下期整体切换为 HTTP 后端时
-``HttpLongTaskService(LongTaskService)`` 名副其实，"Store"则名不副实。
+``HttpPlanTaskService(PlanTaskService)`` 名副其实，"Store"则名不副实。
 """
 
 from abc import ABC, abstractmethod
 from typing import Any
 
-from .model import AgentRun, TaskInstance, TaskStep, TaskTemplate
+from .model import TaskInstance, TaskRun, TaskStep, TaskTemplate
 
 
-class LongTaskService(ABC):
+class PlanTaskService(ABC):
     """
-    长任务服务策略抽象基类。
+    计划任务服务策略抽象基类。
 
     各后端实现（sqlite / mysql / 未来 http）继承本类，对外提供**业务级粗粒度**
     的统一操作。方法刻意保持粗粒度（如 :meth:`claim_next_step` 是一个方法而非
     "查一步 + 改一步 + 插一条 run" 三个方法）：本期直连数据库，下期整体切换为
     HTTP 后端时逐方法转发即可，抽象层与调用方零改动。
 
-    **留痕副作用**：实现须在每次状态流转时自动追加一条 ``ai_task_event``
+    **留痕副作用**：实现须在每次状态流转时自动追加一条事件
     （``event_type='state_change'``），并约定 claim / finish / fail / cancel 等写操作
     顺带刷新任务心跳（活动即心跳）。二者均在实现内部完成，不暴露给调用方。
     """
@@ -33,13 +33,18 @@ class LongTaskService(ABC):
     @property
     @abstractmethod
     def service_type(self) -> str:
-        """本实现的类型标识（如 'sqlite'、'mysql'；未来 'http'）——标识服务走什么底座，
-        对标 ``RdbClient.db_type`` / ``MemoryStore.backend_type``。"""
+        """
+        本实现的类型标识（如 'sqlite'、'mysql'；未来 'http'）——标识服务走什么底座，
+        对标 ``RdbClient.db_type`` / ``MemoryStore.backend_type``。
+        """
 
     @abstractmethod
     def setup(self) -> None:
-        """初始化服务（幂等）：SQL 后端建 ``ai_task_*`` 六张表，HTTP 后端探活/握手。
-        首次使用前调用。"""
+        """
+        初始化服务（幂等）：SQL 后端建六张任务表，HTTP 后端探活/握手。
+        首次使用前调用。
+        """
+
     # endregion
 
     # region ======== 任务 ========
@@ -57,7 +62,9 @@ class LongTaskService(ABC):
 
     @abstractmethod
     def get_task(self, id: int) -> TaskInstance | None:
-        """按 id 取任务；不存在返回 None。"""
+        """
+        按 id 取任务；不存在返回 None。
+        """
 
     @abstractmethod
     def list_tasks(
@@ -89,7 +96,9 @@ class LongTaskService(ABC):
 
     @abstractmethod
     def heartbeat(self, id: int) -> None:
-        """刷新任务心跳（单条 ``heartbeat_at = now``）。"""
+        """
+        刷新任务心跳（单条 ``heartbeat_at = now``）。
+        """
 
     @abstractmethod
     def pause(self, id: int) -> bool:
@@ -110,7 +119,7 @@ class LongTaskService(ABC):
         """
 
     @abstractmethod
-    def cancel(self, id: int, reason: str = '') -> bool:
+    def cancel(self, id: int, reason: str = "") -> bool:
         """
         取消任务（非终态 → cancelled）：running 步骤连带置 failed（注明取消原因），
         running run 置 cancelled；同一事务内完成。
@@ -122,6 +131,7 @@ class LongTaskService(ABC):
         Returns:
             是否命中（已终态返回 False）。
         """
+
     # endregion
 
     # region ======== 步骤 ========
@@ -157,14 +167,18 @@ class LongTaskService(ABC):
 
     @abstractmethod
     def get_step(self, id: int) -> TaskStep | None:
-        """按 id 取步骤；不存在返回 None。"""
+        """
+        按 id 取步骤；不存在返回 None。
+        """
 
     @abstractmethod
     def list_steps(self, task_id: int) -> list[dict[str, Any]]:
-        """按任务列出全部步骤（按 seq 升序），返回行字典列表。"""
+        """
+        按任务列出全部步骤（按 seq 升序），返回行字典列表。
+        """
 
     @abstractmethod
-    def skip_step(self, id: int, reason: str = '') -> bool:
+    def skip_step(self, id: int, reason: str = "") -> bool:
         """
         跳过 pending 步骤（pending → skipped）。
 
@@ -198,6 +212,7 @@ class LongTaskService(ABC):
         Returns:
             是否命中（步骤状态不在允许范围返回 False）。
         """
+
     # endregion
 
     # region ======== 执行 ========
@@ -241,8 +256,9 @@ class LongTaskService(ABC):
         """
 
     @abstractmethod
-    def finish_run(self, run_id: int, output: str = '', summary: str | None = None,
-                   token_usage: int | None = None) -> bool:
+    def finish_run(
+        self, run_id: int, output: str = "", summary: str | None = None, token_usage: int | None = None
+    ) -> bool:
         """
         成功收口一次执行：run → succeeded、step → succeeded（写 result_summary），
         该任务最后一个步骤完成时任务 → completed；同一事务。
@@ -277,19 +293,25 @@ class LongTaskService(ABC):
         """
 
     @abstractmethod
-    def get_run(self, run_id: int) -> AgentRun | None:
-        """按 id 取执行记录；不存在返回 None。"""
+    def get_run(self, run_id: int) -> TaskRun | None:
+        """
+        按 id 取执行记录；不存在返回 None。
+        """
 
     @abstractmethod
     def list_runs(self, step_id: int) -> list[dict[str, Any]]:
-        """按步骤列出全部执行尝试（按 id 升序），返回行字典列表。"""
+        """
+        按步骤列出全部执行尝试（按 id 升序），返回行字典列表。
+        """
 
     @abstractmethod
     def list_task_runs(self, task_id: int) -> list[dict[str, Any]]:
-        """按任务列出全部执行尝试（按 id 升序），返回行字典列表。"""
+        """
+        按任务列出全部执行尝试（按 id 升序），返回行字典列表。
+        """
 
     @abstractmethod
-    def release_run(self, run_id: int, reason: str = '') -> str:
+    def release_run(self, run_id: int, reason: str = "") -> str:
         """
         释放一次执行（管理动作）：run running → cancelled、所属步骤 running → pending
         （**不消耗重试预算**，retry_count 不变），任务保持 running 并刷心跳；同一事务。
@@ -304,6 +326,7 @@ class LongTaskService(ABC):
         Returns:
             ``'released'``（已释放）或 ``''``（run 不存在或非 running，未流转）。
         """
+
     # endregion
 
     # region ======== 恢复 ========
@@ -361,6 +384,7 @@ class LongTaskService(ABC):
             ``kind`` ∈ ``step/run/task``，``level`` ∈ info/warn/error，
             ``fixed`` 仅 fix=True 且该发现已修复时为 True。
         """
+
     # endregion
 
     # region ======== 产物 / 事件 ========
@@ -386,7 +410,9 @@ class LongTaskService(ABC):
 
     @abstractmethod
     def list_artifacts(self, task_id: int) -> list[dict[str, Any]]:
-        """按任务列出全部产物（按 id 升序），返回行字典列表。"""
+        """
+        按任务列出全部产物（按 id 升序），返回行字典列表。
+        """
 
     @abstractmethod
     def add_event(
@@ -394,7 +420,7 @@ class LongTaskService(ABC):
         task_id: int,
         event_type: str,
         message: str,
-        level: str = 'info',
+        level: str = "info",
         step_id: int | None = None,
         run_id: int | None = None,
     ) -> int:
@@ -412,7 +438,10 @@ class LongTaskService(ABC):
 
     @abstractmethod
     def list_events(self, task_id: int, limit: int = 100) -> list[dict[str, Any]]:
-        """按任务查事件流水（按 id 倒序取最近 limit 条），返回行字典列表。"""
+        """
+        按任务查事件流水（按 id 倒序取最近 limit 条），返回行字典列表。
+        """
+
     # endregion
 
     # region ======== 模板 ========
@@ -433,9 +462,14 @@ class LongTaskService(ABC):
 
     @abstractmethod
     def get_template_by_name(self, template_name: str) -> TaskTemplate | None:
-        """按模板名取模板；不存在返回 None。"""
+        """
+        按模板名取模板；不存在返回 None。
+        """
 
     @abstractmethod
     def list_templates(self, limit: int = 50) -> list[dict[str, Any]]:
-        """模板列表（按 id 倒序），返回行字典列表。"""
+        """
+        模板列表（按 id 倒序），返回行字典列表。
+        """
+
     # endregion

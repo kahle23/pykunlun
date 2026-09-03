@@ -12,6 +12,7 @@
 """
 import logging
 import logging.config
+from typing import Any
 
 # 默认配置：控制台 + 简洁格式（带时间和模块名）
 _DEFAULT_CONFIG = {
@@ -40,7 +41,7 @@ _DEFAULT_CONFIG = {
 _configured = False
 
 
-def setup(config=None):
+def setup(config: dict[str, Any] | None = None) -> None:
     """
     应用日志配置。
 
@@ -57,7 +58,7 @@ def setup(config=None):
     _configured = True
 
 
-def getLogger(name=None):
+def getLogger(name: str | None = None) -> logging.Logger:
     """
     获取 logger，首次调用且未配置时自动套用默认配置。
 

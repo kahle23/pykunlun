@@ -123,7 +123,7 @@ class HelpCommand(Command):
             f"用法: {command.usage}"
         )
 
-    def full_help_text(self, commands: dict) -> str:
+    def full_help_text(self, commands: dict[str, Command]) -> str:
         """
         生成所有命令的帮助文本。
 

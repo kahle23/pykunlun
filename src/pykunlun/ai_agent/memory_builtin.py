@@ -29,7 +29,7 @@ from .memory import (
 log = logutil.getLogger(__name__)
 
 
-def _iso(dt) -> str | None:
+def _iso(dt: datetime | None) -> str | None:
     """datetime → ISO 字符串（None 直通）。
 
     Python 3.12 起默认 datetime→SQLite 适配器已弃用，故显式序列化为 ISO 字符串；
@@ -107,7 +107,7 @@ class SqliteMemoryStore(MemoryStore):
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
-        conn.row_factory = sqlite3.Row  # type: ignore[assignment]
+        conn.row_factory = sqlite3.Row
         return conn
 
     def _query(self, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:

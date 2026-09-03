@@ -1,12 +1,12 @@
 """
-长任务状态机：合法状态集、流转表与裁决纯函数。
+计划任务状态机：合法状态集、流转表与裁决纯函数。
 
 规则只有一份（本模块），各后端实现复用——对标 :mod:`pykunlun.ai_agent.memory`
 把 ``visibility_clause`` 放抽象层的做法。全部为纯函数/常量，无任何 I/O 依赖。
 
 两条**绕过自动流转表**的管理动作（不在 :data:`TASK_TRANSITIONS` /
-:data:`STEP_TRANSITIONS` 内表达，由实现层 :meth:`LongTaskService.retry_step`
-与 :meth:`LongTaskService.cancel` 显式处理）：
+:data:`STEP_TRANSITIONS` 内表达，由实现层 :meth:`PlanTaskService.retry_step`
+与 :meth:`PlanTaskService.cancel` 显式处理）：
 
   - ``step failed → pending``：手动 retry_step（预算 +1 后复活）；
   - ``task failed → running``：retry_step 复活因该步骤失败的任务。
@@ -25,52 +25,66 @@ import json
 from typing import Any
 
 #: 任务实例的合法状态集
-TASK_STATUSES: frozenset[str] = frozenset({
-    'pending', 'running', 'paused', 'completed', 'failed', 'cancelled',
-})
+TASK_STATUSES: frozenset[str] = frozenset(
+    {
+        "pending",
+        "running",
+        "paused",
+        "completed",
+        "failed",
+        "cancelled",
+    }
+)
 
 #: 任务步骤的合法状态集
-STEP_STATUSES: frozenset[str] = frozenset({'pending', 'running', 'succeeded', 'failed', 'skipped'})
+STEP_STATUSES: frozenset[str] = frozenset({"pending", "running", "succeeded", "failed", "skipped"})
 
 #: 执行记录（尝试）的合法状态集
-RUN_STATUSES: frozenset[str] = frozenset({'running', 'succeeded', 'failed', 'timeout', 'cancelled'})
+RUN_STATUSES: frozenset[str] = frozenset({"running", "succeeded", "failed", "timeout", "cancelled"})
 
 #: 任务状态合法流转表（值为可流入的目标状态集；空集 = 终态）
 TASK_TRANSITIONS: dict[str, frozenset[str]] = {
-    'pending':   frozenset({'running', 'cancelled'}),
-    'running':   frozenset({'paused', 'completed', 'failed', 'cancelled'}),
-    'paused':    frozenset({'running', 'cancelled'}),
-    'completed': frozenset(),
-    'failed':    frozenset(),
-    'cancelled': frozenset(),
+    "pending": frozenset({"running", "cancelled"}),
+    "running": frozenset({"paused", "completed", "failed", "cancelled"}),
+    "paused": frozenset({"running", "cancelled"}),
+    "completed": frozenset(),
+    "failed": frozenset(),
+    "cancelled": frozenset(),
 }
 
 #: 步骤状态合法流转表。``running → pending`` = 失败但重试预算未耗尽（自动流转）；
-#: ``failed → pending``（手动 retry_step 复活）不走本表，见 :meth:`LongTaskService.retry_step`。
+#: ``failed → pending``（手动 retry_step 复活）不走本表，见 :meth:`PlanTaskService.retry_step`。
 STEP_TRANSITIONS: dict[str, frozenset[str]] = {
-    'pending':   frozenset({'running', 'skipped'}),
-    'running':   frozenset({'succeeded', 'failed', 'pending'}),
-    'succeeded': frozenset(),
-    'failed':    frozenset(),
-    'skipped':   frozenset(),
+    "pending": frozenset({"running", "skipped"}),
+    "running": frozenset({"succeeded", "failed", "pending"}),
+    "succeeded": frozenset(),
+    "failed": frozenset(),
+    "skipped": frozenset(),
 }
 
 #: update_task() 允许修改的字段白名单（除 id/状态/心跳/时间戳外的业务字段）
-UPDATABLE_TASK_FIELDS: frozenset[str] = frozenset({
-    'title', 'goal', 'params', 'max_retries', 'heartbeat_timeout_sec', 'timeout_sec',
-})
+UPDATABLE_TASK_FIELDS: frozenset[str] = frozenset(
+    {
+        "title",
+        "goal",
+        "params",
+        "max_retries",
+        "heartbeat_timeout_sec",
+        "timeout_sec",
+    }
+)
 
 #: 合法的 step_type 取值
-VALID_STEP_TYPES: frozenset[str] = frozenset({'agent', 'bash', 'human_approval', 'condition'})
+VALID_STEP_TYPES: frozenset[str] = frozenset({"agent", "bash", "human_approval", "condition"})
 
 #: 合法的产物类型取值
-VALID_ART_TYPES: frozenset[str] = frozenset({'file', 'report', 'diff', 'log', 'other'})
+VALID_ART_TYPES: frozenset[str] = frozenset({"file", "report", "diff", "log", "other"})
 
 #: 合法的事件类型取值
-VALID_EVENT_TYPES: frozenset[str] = frozenset({'state_change', 'error', 'checkpoint', 'note', 'artifact'})
+VALID_EVENT_TYPES: frozenset[str] = frozenset({"state_change", "error", "checkpoint", "note", "artifact"})
 
 #: 合法的事件级别取值
-VALID_EVENT_LEVELS: frozenset[str] = frozenset({'info', 'warn', 'error'})
+VALID_EVENT_LEVELS: frozenset[str] = frozenset({"info", "warn", "error"})
 
 
 def assert_task_transition(old: str, new: str) -> None:
@@ -123,12 +137,12 @@ def step_disposition_on_fail(retry_count: int, max_retries: int) -> str:
     Returns:
         ``'pending'``（预算未耗尽，回 pending 待重试）或 ``'failed'``（预算耗尽，终败）。
     """
-    return 'pending' if retry_count < max_retries else 'failed'
+    return "pending" if retry_count < max_retries else "failed"
 
 
 #: 依赖就绪判定中视为"已完成"的步骤状态集合。含 ``skipped``：跳过是有意决策
 #: （如功能放弃），不应永久阻塞下游步骤。
-DEP_SATISFIED_STATUSES: frozenset[str] = frozenset({'succeeded', 'skipped'})
+DEP_SATISFIED_STATUSES: frozenset[str] = frozenset({"succeeded", "skipped"})
 
 
 def parse_depends_on(value: Any) -> list[int]:
@@ -141,7 +155,7 @@ def parse_depends_on(value: Any) -> list[int]:
     Returns:
         依赖 seq 列表（int 升序去重）；值为空返回 ``[]``；非法元素（非 int）丢弃。
     """
-    if value is None or value == '':
+    if value is None or value == "":
         return []
     if isinstance(value, str):
         try:

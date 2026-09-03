@@ -8,11 +8,15 @@ OCR 引擎管理器（双层注册表：engine 类 + engine 实例）。
 
 import threading
 from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Union
 
 from pykunlun.util import logutil
 
 from .engine import OcrEngine
 from .model import OcrCfg, OcrResult
+
+if TYPE_CHECKING:
+    import numpy.typing as npt
 
 log = logutil.getLogger(__name__)
 
@@ -306,7 +310,7 @@ class OcrManager:
 
     # region ======== 识别便捷方法（透传 OcrEngine） ========
 
-    def recognize(self, image, name: str | None = None) -> str:
+    def recognize(self, image: Union[str, 'npt.NDArray[Any]'], name: str | None = None) -> str:
         """
         识别图片中的文字，返回纯文本（透传 :meth:`OcrEngine.recognize`）。
 
@@ -320,7 +324,7 @@ class OcrManager:
         return self.get_engine(name).recognize(image)
 
     def recognize_with_details(
-        self, image, name: str | None = None
+        self, image: Union[str, 'npt.NDArray[Any]'], name: str | None = None
     ) -> list[OcrResult]:
         """
         识别图片中的文字，返回含位置与置信度的详细结果（透传 :meth:`OcrEngine.recognize_with_details`）。
@@ -336,12 +340,12 @@ class OcrManager:
 
     def recognize_and_draw(
         self,
-        image,
+        image: Union[str, 'npt.NDArray[Any]'],
         color: tuple[int, int, int] = (0, 255, 0),
         thickness: int | None = None,
         output_path: str | None = None,
         name: str | None = None,
-    ):
+    ) -> 'npt.NDArray[Any]':
         """
         识别图片中的文字，并在图片上绘制边界框与文本标签（透传 :meth:`OcrEngine.recognize_and_draw`）。
 

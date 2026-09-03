@@ -1,12 +1,12 @@
 """
-pykunlun.ai_agent 长任务能力的单元测试。
+pykunlun.task.plan 计划任务能力的单元测试。
 
 覆盖：
   - 状态机纯函数（:func:`assert_task_transition` / :func:`assert_step_transition` /
     :func:`step_disposition_on_fail`）
   - 数据类 to_dict / from_dict 往返
-  - :class:`LongTaskManager` 注册 / 转发 / 未注册 KeyError
-  - :class:`SqliteLongTaskService` 全生命周期：建表幂等、任务/步骤/执行 CRUD、
+  - :class:`PlanTaskManager` 注册 / 转发 / 未注册 KeyError
+  - :class:`SqlitePlanTaskService` 全生命周期：建表幂等、任务/步骤/执行 CRUD、
     claim 续跑上下文包、finish 自动收口、fail 重试预算、sweep 僵尸恢复、
     pause/resume/cancel/skip/retry、事件留痕、产物、模板
 """
@@ -17,11 +17,11 @@ import tempfile
 
 import pytest
 
-from pykunlun.ai_agent import (
+from pykunlun.task.plan import (
     STEP_TRANSITIONS,
     TASK_TRANSITIONS,
-    LongTaskManager,
-    SqliteLongTaskService,
+    PlanTaskManager,
+    SqlitePlanTaskService,
     TaskInstance,
     TaskStep,
     TaskTemplate,
@@ -47,17 +47,17 @@ def store_path():
 
 @pytest.fixture
 def store(store_path):
-    """已初始化的 SqliteLongTaskService。"""
-    s = SqliteLongTaskService(store_path)
+    """已初始化的 SqlitePlanTaskService。"""
+    s = SqlitePlanTaskService(store_path)
     s.setup()
     return s
 
 
 @pytest.fixture
 def mgr(store):
-    """已注册默认 store 的 LongTaskManager。"""
-    m = LongTaskManager()
-    m.register(LongTaskManager.DEFAULT_NAME, store)
+    """已注册默认 store 的 PlanTaskManager。"""
+    m = PlanTaskManager()
+    m.register(PlanTaskManager.DEFAULT_NAME, store)
     return m
 
 
@@ -154,7 +154,7 @@ def test_task_step_defaults():
 # region ======== 管理器 ========
 
 def test_manager_unregistered_raises():
-    m = LongTaskManager()
+    m = PlanTaskManager()
     with pytest.raises(KeyError, match='未注册'):
         m.get_service('nope')
 
@@ -173,7 +173,7 @@ def test_manager_forward(mgr, store):
 
 def test_rejects_memory_path():
     with pytest.raises(ValueError, match=':memory:'):
-        SqliteLongTaskService(':memory:')
+        SqlitePlanTaskService(':memory:')
 
 
 def test_init_is_idempotent(store):

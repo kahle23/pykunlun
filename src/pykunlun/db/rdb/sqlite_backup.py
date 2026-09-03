@@ -118,7 +118,7 @@ class SqliteBackupService(RdbBackupService):
             log.warning(f"SQLite 恢复失败: {e}")
             return RdbBackupResult(False, error_message=f"SQLite 恢复失败: {e}")
 
-    def _dump_to_file(self, conn, output_path: str,
+    def _dump_to_file(self, conn: sqlite3.Connection, output_path: str,
                       tables: list[str] | None = None, schema_only: bool = False) -> None:
         """
         将数据库内容导出到 SQL 文件。

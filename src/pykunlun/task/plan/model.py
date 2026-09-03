@@ -1,22 +1,22 @@
 """
-长任务数据模型（POJO 集合）。
+计划任务数据模型（POJO 集合）。
 
-集中承载长任务子包中"纯数据容器"性质的六个类，字段与上层实现的 ``ai_task_*``
-六张表一一对应（对标 :mod:`pykunlun.ai.ocr.model` 的组织方式）：
+集中承载计划任务子包中"纯数据容器"性质的六个类，字段与各后端实现的六张任务表
+（模板/实例/步骤/执行/产物/事件）一一对应（对标 :mod:`pykunlun.ai.ocr.model` 的组织方式）：
 
-  - :class:`TaskTemplate` —— 任务模板（可复用的一类长任务定义）
-  - :class:`TaskInstance` —— 任务实例（核心表：一次具体的长任务）
+  - :class:`TaskTemplate` —— 任务模板（可复用的一类计划任务定义）
+  - :class:`TaskInstance` —— 任务实例（核心表：一次具体的计划任务）
   - :class:`TaskStep`     —— 步骤（计划中要做的事，seq 串行）
-  - :class:`AgentRun`     —— 执行记录（实际的一次尝试，重试 = 新 run）
+  - :class:`TaskRun`     —— 执行记录（实际的一次尝试，重试 = 新 run）
   - :class:`TaskArtifact` —— 产物（任务/步骤产出的文件与报告）
   - :class:`TaskEvent`    —— 事件日志（append-only 流水账）
 
 均为 ``@dataclass``、自身不做校验；新建时 ``id`` 与时间戳留空由存储回填。
 集中成单一数据模型模块便于按需 import，并避免与
-:mod:`pykunlun.ai_agent.long_task.service` 形成循环依赖。
+:mod:`pykunlun.task.plan.service` 形成循环依赖。
 """
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
 from typing import Any
 
@@ -24,9 +24,9 @@ from typing import Any
 @dataclass
 class TaskTemplate:
     """
-    长任务模板（可复用的一类长任务定义）。
+    计划任务模板（可复用的一类计划任务定义）。
 
-    字段与 ``ai_task_template`` 表一一对应。新建时 ``id`` 留空，由存储回填。
+    字段与存储层的模板表一一对应。新建时 ``id`` 留空，由存储回填。
 
     Attributes:
         name: 模板名（唯一）。
@@ -50,24 +50,26 @@ class TaskTemplate:
     updated_at: datetime | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """转为字典（含全部字段，便于序列化输出）。"""
-        from dataclasses import asdict
+        """
+        转为字典（含全部字段，便于序列化输出）。
+        """
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> 'TaskTemplate':
-        """从字典构造，忽略未知键，便于从行字典还原。"""
-        import dataclasses
-        names = {f.name for f in dataclasses.fields(cls)}
+    def from_dict(cls, d: dict[str, Any]) -> "TaskTemplate":
+        """
+        从字典构造，忽略未知键，便于从行字典还原。
+        """
+        names = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in d.items() if k in names})
 
 
 @dataclass
 class TaskInstance:
     """
-    长任务实例（核心表：一次具体的长任务）。
+    计划任务实例（核心表：一次具体的计划任务）。
 
-    字段与 ``ai_task_instance`` 表一一对应。新建时 ``id`` 留空，由存储回填；
+    字段与存储层的任务实例表一一对应。新建时 ``id`` 留空，由存储回填；
     ``status`` 新建固定为 ``pending``。
 
     Attributes:
@@ -93,7 +95,7 @@ class TaskInstance:
     goal: str
     template_id: int | None = None
     parent_task_id: int | None = None
-    status: str = 'pending'
+    status: str = "pending"
     params: dict[str, Any] | None = None
     max_retries: int = 1
     heartbeat_at: datetime | None = None
@@ -107,24 +109,26 @@ class TaskInstance:
     updated_at: datetime | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """转为字典（含全部字段，便于序列化输出）。"""
-        from dataclasses import asdict
+        """
+        转为字典（含全部字段，便于序列化输出）。
+        """
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> 'TaskInstance':
-        """从字典构造，忽略未知键，便于从行字典还原。"""
-        import dataclasses
-        names = {f.name for f in dataclasses.fields(cls)}
+    def from_dict(cls, d: dict[str, Any]) -> "TaskInstance":
+        """
+        从字典构造，忽略未知键，便于从行字典还原。
+        """
+        names = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in d.items() if k in names})
 
 
 @dataclass
 class TaskStep:
     """
-    长任务步骤（计划）。
+    计划任务步骤（计划）。
 
-    字段与 ``ai_task_step`` 表一一对应。step 是"计划中要做的事"，run 是"实际的一次
+    字段与存储层的步骤表一一对应。step 是"计划中要做的事"，run 是"实际的一次
     尝试"，二者分离——失败重试 = 同一 step 新增一条 run。按 ``seq`` 串行执行。
 
     Attributes:
@@ -152,8 +156,8 @@ class TaskStep:
     name: str
     instruction: str
     seq: int | None = None
-    step_type: str = 'agent'
-    status: str = 'pending'
+    step_type: str = "agent"
+    status: str = "pending"
     retry_count: int = 0
     max_retries: int | None = None
     timeout_sec: int | None = None
@@ -166,24 +170,26 @@ class TaskStep:
     depends_on: list[int] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """转为字典（含全部字段，便于序列化输出）。"""
-        from dataclasses import asdict
+        """
+        转为字典（含全部字段，便于序列化输出）。
+        """
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> 'TaskStep':
-        """从字典构造，忽略未知键，便于从行字典还原。"""
-        import dataclasses
-        names = {f.name for f in dataclasses.fields(cls)}
+    def from_dict(cls, d: dict[str, Any]) -> "TaskStep":
+        """
+        从字典构造，忽略未知键，便于从行字典还原。
+        """
+        names = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in d.items() if k in names})
 
 
 @dataclass
-class AgentRun:
+class TaskRun:
     """
-    长任务执行记录（一次尝试）。
+    计划任务执行记录（一次尝试）。
 
-    字段与 ``ai_task_run`` 表一一对应。run 仅由 :meth:`LongTaskService.claim_next_step`
+    字段与存储层的执行记录表一一对应。run 仅由 :meth:`PlanTaskService.claim_next_step`
     在认领步骤时创建，调用方不直接插 run。
 
     Attributes:
@@ -205,7 +211,7 @@ class AgentRun:
     task_id: int | None = None
     session_id: str | None = None
     agent_name: str | None = None
-    status: str = 'running'
+    status: str = "running"
     input_snapshot: str | None = None
     output: str | None = None
     error_msg: str | None = None
@@ -215,24 +221,26 @@ class AgentRun:
     id: int | None = field(default=None)
 
     def to_dict(self) -> dict[str, Any]:
-        """转为字典（含全部字段，便于序列化输出）。"""
-        from dataclasses import asdict
+        """
+        转为字典（含全部字段，便于序列化输出）。
+        """
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> 'AgentRun':
-        """从字典构造，忽略未知键，便于从行字典还原。"""
-        import dataclasses
-        names = {f.name for f in dataclasses.fields(cls)}
+    def from_dict(cls, d: dict[str, Any]) -> "TaskRun":
+        """
+        从字典构造，忽略未知键，便于从行字典还原。
+        """
+        names = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in d.items() if k in names})
 
 
 @dataclass
 class TaskArtifact:
     """
-    长任务产物（任务/步骤产出的文件与报告）。
+    计划任务产物（任务/步骤产出的文件与报告）。
 
-    字段与 ``ai_task_artifact`` 表一一对应。
+    字段与存储层的产物表一一对应。
 
     Attributes:
         task_id: 所属任务 id。
@@ -246,32 +254,34 @@ class TaskArtifact:
 
     task_id: int
     path: str
-    art_type: str = 'file'
+    art_type: str = "file"
     step_id: int | None = None
     note: str | None = None
     id: int | None = field(default=None)
     created_at: datetime | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """转为字典（含全部字段，便于序列化输出）。"""
-        from dataclasses import asdict
+        """
+        转为字典（含全部字段，便于序列化输出）。
+        """
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> 'TaskArtifact':
-        """从字典构造，忽略未知键，便于从行字典还原。"""
-        import dataclasses
-        names = {f.name for f in dataclasses.fields(cls)}
+    def from_dict(cls, d: dict[str, Any]) -> "TaskArtifact":
+        """
+        从字典构造，忽略未知键，便于从行字典还原。
+        """
+        names = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in d.items() if k in names})
 
 
 @dataclass
 class TaskEvent:
     """
-    长任务事件日志（append-only 流水账，状态对不上时以此为准）。
+    计划任务事件日志（append-only 流水账，状态对不上时以此为准）。
 
-    字段与 ``ai_task_event`` 表一一对应。事件主要由各实现在状态流转时自动追加
-    （``event_type='state_change'``），调用方也可经 :meth:`LongTaskService.add_event`
+    字段与存储层的事件表一一对应。事件主要由各实现在状态流转时自动追加
+    （``event_type='state_change'``），调用方也可经 :meth:`PlanTaskService.add_event`
     手动记 checkpoint/note。
 
     Attributes:
@@ -290,18 +300,20 @@ class TaskEvent:
     message: str
     step_id: int | None = None
     run_id: int | None = None
-    level: str = 'info'
+    level: str = "info"
     id: int | None = field(default=None)
     created_at: datetime | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """转为字典（含全部字段，便于序列化输出）。"""
-        from dataclasses import asdict
+        """
+        转为字典（含全部字段，便于序列化输出）。
+        """
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> 'TaskEvent':
-        """从字典构造，忽略未知键，便于从行字典还原。"""
-        import dataclasses
-        names = {f.name for f in dataclasses.fields(cls)}
+    def from_dict(cls, d: dict[str, Any]) -> "TaskEvent":
+        """
+        从字典构造，忽略未知键，便于从行字典还原。
+        """
+        names = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in d.items() if k in names})

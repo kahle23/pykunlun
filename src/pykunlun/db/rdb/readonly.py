@@ -7,6 +7,7 @@
 
 import re
 from collections.abc import Callable, Iterable
+from types import ModuleType
 from typing import Any
 
 from .client import RdbClient
@@ -60,7 +61,7 @@ class RdbReadOnlyClient(RdbClient):
 
     #: 默认禁止的 SQL 首动词集合（DML 写 / DDL / DCL / 过程调用 / 数据加载）。
     #: 构造时未显式传入 ``forbidden_verbs`` 时采用此默认值。
-    DEFAULT_FORBIDDEN_VERBS: frozenset = frozenset({
+    DEFAULT_FORBIDDEN_VERBS: frozenset[str] = frozenset({
         'INSERT', 'UPDATE', 'DELETE', 'REPLACE', 'MERGE',            # DML 写
         'CREATE', 'ALTER', 'DROP', 'TRUNCATE', 'RENAME',             # DDL
         'GRANT', 'REVOKE',                                           # DCL
@@ -75,7 +76,7 @@ class RdbReadOnlyClient(RdbClient):
     _inner: RdbClient
 
     #: 当前实例生效的禁止动词集合（实例属性，构造时确定）。
-    _forbidden_verbs: frozenset
+    _forbidden_verbs: frozenset[str]
 
     # endregion
 
@@ -162,7 +163,7 @@ class RdbReadOnlyClient(RdbClient):
         """透传内层客户端的数据库类型标识（满足基类抽象 property）。"""
         return self._inner.db_type
 
-    def get_driver(self):
+    def get_driver(self) -> ModuleType:
         """透传内层客户端的驱动模块（满足基类抽象方法）。"""
         return self._inner.get_driver()
 
@@ -174,7 +175,7 @@ class RdbReadOnlyClient(RdbClient):
 
     # region ======== 拦截 + 转发：执行接口 ========
 
-    def get_forbidden_verbs(self) -> frozenset:
+    def get_forbidden_verbs(self) -> frozenset[str]:
         """
         获取当前实例生效的禁止 SQL 首动词集合。
 
@@ -187,7 +188,7 @@ class RdbReadOnlyClient(RdbClient):
         return self._forbidden_verbs
 
     def query(self, sql: str, params: tuple[Any, ...] | None = None,
-              converters: dict[type, Callable[[Any], Any]] | None = None) -> list[dict]:
+              converters: dict[type, Callable[[Any], Any]] | None = None) -> list[dict[str, Any]]:
         """
         只读查询（拦截写操作后转发给内层客户端）。
 

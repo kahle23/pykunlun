@@ -7,6 +7,8 @@ SQLite 驱动客户端（基于 Python 标准库 ``sqlite3``，无第三方依�
 import os
 import sqlite3
 import urllib.request
+from types import ModuleType
+from typing import Any
 
 from pykunlun.util import logutil
 
@@ -25,13 +27,13 @@ class SqliteClient(RdbClient):
 
     db_type = 'sqlite'
 
-    def get_driver(self):
+    def get_driver(self) -> ModuleType:
         """
         返回标准库 sqlite3 模块。
         """
         return sqlite3
 
-    def build_connect_kwargs(self) -> dict:
+    def build_connect_kwargs(self) -> dict[str, Any]:
         """
         构建 sqlite3 连接参数（基于绑定的 :attr:`cfg`）。
 
@@ -70,7 +72,7 @@ class SqliteClient(RdbClient):
         from pykunlun.util import validation
         validation.check_required_fields_not_empty(self.cfg, ['database'], '数据库配置')
 
-    def is_connection_open(self, connection) -> bool:
+    def is_connection_open(self, connection: Any) -> bool:
         """
         判断 sqlite3 连接是否可用。
 

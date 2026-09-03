@@ -1,77 +1,80 @@
 """
-长任务服务管理器。
+计划任务服务管理器。
 
-:class:`LongTaskManager` 维护 ``name -> LongTaskService`` 注册表，按名称（别名）
+:class:`PlanTaskManager` 维护 ``name -> PlanTaskService`` 注册表，按名称（别名）
 管理各后端实例，对外逐方法转发。完全对标
 :class:`pykunlun.ai_agent.memory.MemoryManager` 的注册/转发范式（亦同
 :class:`pykunlun.ai.ocr.manager.OcrManager`）。
 
-无人值守执行（:meth:`LongTaskManager.run_task`）是本管理器唯一包含本地行为的
+无人值守执行（:meth:`PlanTaskManager.run_task`）是本管理器唯一包含本地行为的
 组合方法：bash 步骤以子进程执行并自动收口，其余步骤交回 AI 编排层。
 """
 
 import os
 import signal
 import subprocess
-import sys
 import time
 from typing import Any
 
 from pykunlun.util import logutil
 
-from .model import AgentRun, TaskInstance, TaskStep, TaskTemplate
-from .service import LongTaskService
+from .model import TaskInstance, TaskRun, TaskStep, TaskTemplate
+from .service import PlanTaskService
 
 log = logutil.getLogger(__name__)
 
 
-class LongTaskManager:
+class PlanTaskManager:
     """
-    长任务服务管理器。
+    计划任务服务管理器。
 
-    维护 ``name -> LongTaskService`` 注册表，按名称（别名）管理各后端实例，对外
+    维护 ``name -> PlanTaskService`` 注册表，按名称（别名）管理各后端实例，对外
     逐方法转发。转发即透传、无额外副作用（留痕副作用在 service 实现内部，
     因为事件需要行上下文——新旧状态、关联 step/run）。
 
     典型用法::
 
-        from pykunlun.ai_agent import LongTaskManager, TaskInstance
+        from pykunlun.task.plan import PlanTaskManager, TaskInstance
 
-        mgr = LongTaskManager()
-        mgr.register('default', SqliteLongTaskService('/data/agent_task.db'))
+        mgr = PlanTaskManager()
+        mgr.register('default', SqlitePlanTaskService('/data/agent_task.db'))
         tid = mgr.create_task(TaskInstance(title='补全文档', goal='...'))
         pkg = mgr.claim_next_step(tid, session_id='session-1')
     """
 
     #: 默认实例名称（省略 name 时使用）
-    DEFAULT_NAME = 'default'
+    DEFAULT_NAME = "default"
 
     def __init__(self) -> None:
-        self._services: dict[str, LongTaskService] = {}
+        self._services: dict[str, PlanTaskService] = {}
 
     # region ======== 注册表管理 ========
     def _resolve_name(self, name: str | None) -> str:
-        """将名称解析为注册表键：为空时回落到 :attr:`DEFAULT_NAME`。"""
+        """
+        将名称解析为注册表键：为空时回落到 :attr:`DEFAULT_NAME`。
+        """
         return name if name else self.DEFAULT_NAME
 
-    def register(self, name: str, service: LongTaskService) -> None:
+    def register(self, name: str, service: PlanTaskService) -> None:
         """
-        注册一个长任务服务实例。
+        注册一个计划任务服务实例。
 
         Args:
             name: 实例名称（别名）；为空时使用 :attr:`DEFAULT_NAME`。
-            service: :class:`LongTaskService` 实例。
+            service: :class:`PlanTaskService` 实例。
         """
         key = self._resolve_name(name)
         self._services[key] = service
-        log.debug("已注册长任务服务实例: %s (service_type=%s)", key, service.service_type)
+        log.debug("已注册计划任务服务实例: %s (service_type=%s)", key, service.service_type)
 
     def unregister(self, name: str | None = None) -> bool:
-        """注销实例；返回是否曾存在。"""
+        """
+        注销实例；返回是否曾存在。
+        """
         key = self._resolve_name(name)
         return self._services.pop(key, None) is not None
 
-    def get_service(self, name: str | None = None) -> LongTaskService:
+    def get_service(self, name: str | None = None) -> PlanTaskService:
         """
         按名称获取实例；不存在则抛出 :class:`KeyError`。
 
@@ -81,18 +84,18 @@ class LongTaskManager:
         key = self._resolve_name(name)
         if key not in self._services:
             registered = sorted(self._services.keys())
-            raise KeyError(
-                f"未注册的长任务服务实例: '{key}'；已注册的实例: {registered}；"
-                f"请先通过 register() 注册"
-            )
+            raise KeyError(f"未注册的计划任务服务实例: '{key}'；已注册的实例: {registered}；请先通过 register() 注册")
         return self._services[key]
 
     def get_registered_names(self) -> list[str]:
-        """返回已注册的全部实例名称（排序）。"""
+        """
+        返回已注册的全部实例名称（排序）。
+        """
         return sorted(self._services.keys())
 
     def setup(self, name: str | None = None) -> None:
         self.get_service(name).setup()
+
     # endregion
 
     # region ======== 任务 ========
@@ -123,8 +126,9 @@ class LongTaskManager:
     def resume(self, id: int, name: str | None = None) -> bool:
         return self.get_service(name).resume(id)
 
-    def cancel(self, id: int, reason: str = '', name: str | None = None) -> bool:
+    def cancel(self, id: int, reason: str = "", name: str | None = None) -> bool:
         return self.get_service(name).cancel(id, reason=reason)
+
     # endregion
 
     # region ======== 步骤 ========
@@ -140,11 +144,12 @@ class LongTaskManager:
     def list_steps(self, task_id: int, name: str | None = None) -> list[dict[str, Any]]:
         return self.get_service(name).list_steps(task_id)
 
-    def skip_step(self, id: int, reason: str = '', name: str | None = None) -> bool:
+    def skip_step(self, id: int, reason: str = "", name: str | None = None) -> bool:
         return self.get_service(name).skip_step(id, reason=reason)
 
     def retry_step(self, id: int, force: bool = False, name: str | None = None) -> bool:
         return self.get_service(name).retry_step(id, force=force)
+
     # endregion
 
     # region ======== 执行 ========
@@ -156,25 +161,24 @@ class LongTaskManager:
         ignore_deps: bool = False,
         name: str | None = None,
     ) -> dict[str, Any] | None:
-        return self.get_service(name).claim_next_step(task_id, session_id=session_id,
-                                                      agent_name=agent_name,
-                                                      ignore_deps=ignore_deps)
+        return self.get_service(name).claim_next_step(
+            task_id, session_id=session_id, agent_name=agent_name, ignore_deps=ignore_deps
+        )
 
     def finish_run(
         self,
         run_id: int,
-        output: str = '',
+        output: str = "",
         summary: str | None = None,
         token_usage: int | None = None,
         name: str | None = None,
     ) -> bool:
-        return self.get_service(name).finish_run(run_id, output=output, summary=summary,
-                                                 token_usage=token_usage)
+        return self.get_service(name).finish_run(run_id, output=output, summary=summary, token_usage=token_usage)
 
     def fail_run(self, run_id: int, error: str, name: str | None = None) -> str:
         return self.get_service(name).fail_run(run_id, error)
 
-    def get_run(self, run_id: int, name: str | None = None) -> AgentRun | None:
+    def get_run(self, run_id: int, name: str | None = None) -> TaskRun | None:
         return self.get_service(name).get_run(run_id)
 
     def list_runs(self, step_id: int, name: str | None = None) -> list[dict[str, Any]]:
@@ -183,7 +187,7 @@ class LongTaskManager:
     def list_task_runs(self, task_id: int, name: str | None = None) -> list[dict[str, Any]]:
         return self.get_service(name).list_task_runs(task_id)
 
-    def release_run(self, run_id: int, reason: str = '', name: str | None = None) -> str:
+    def release_run(self, run_id: int, reason: str = "", name: str | None = None) -> str:
         return self.get_service(name).release_run(run_id, reason=reason)
 
     def run_task(
@@ -232,32 +236,36 @@ class LongTaskManager:
         """
         results: list[dict[str, Any]] = []
         while True:
-            pkg = self.claim_next_step(task_id, session_id=session_id, agent_name=agent_name,
-                                       name=name)
+            pkg = self.claim_next_step(task_id, session_id=session_id, agent_name=agent_name, name=name)
             if pkg is None:
                 break
-            step = pkg['step']
-            run_id = pkg['run_id']
+            step = pkg["step"]
+            run_id = pkg["run_id"]
             row: dict[str, Any] = {
-                'seq': step.get('seq'), 'name': step.get('name'),
-                'step_id': step.get('id'), 'run_id': run_id,
-                'step_type': step.get('step_type'), 'exit_code': None,
-                'duration_sec': None, 'summary': None,
+                "seq": step.get("seq"),
+                "name": step.get("name"),
+                "step_id": step.get("id"),
+                "run_id": run_id,
+                "step_type": step.get("step_type"),
+                "exit_code": None,
+                "duration_sec": None,
+                "summary": None,
             }
-            if step.get('step_type') != 'bash':
-                reason = (f"headless run 不执行 {step.get('step_type')} 步骤"
-                          f"「{step.get('name')}」，需 AI 编排层接手")
+            if step.get("step_type") != "bash":
+                reason = f"headless run 不执行 {step.get('step_type')} 步骤「{step.get('name')}」，需 AI 编排层接手"
                 self.release_run(run_id, reason=reason, name=name)
                 log.warning("%s；本轮停止，步骤已还回队列", reason)
-                row['status'] = 'released'
-                row['summary'] = reason
+                row["status"] = "released"
+                row["summary"] = reason
                 results.append(row)
                 break
-            row.update(self._run_bash_step(step, run_id, name=name,
-                                           output_head_chars=output_head_chars,
-                                           output_tail_chars=output_tail_chars))
+            row.update(
+                self._run_bash_step(
+                    step, run_id, name=name, output_head_chars=output_head_chars, output_tail_chars=output_tail_chars
+                )
+            )
             results.append(row)
-            if row['status'] in ('failed', 'retried'):
+            if row["status"] in ("failed", "retried"):
                 break
         return results
 
@@ -269,40 +277,39 @@ class LongTaskManager:
         output_head_chars: int,
         output_tail_chars: int,
     ) -> dict[str, Any]:
-        """执行单个 bash 步骤并自动收口，返回结果行增量（status/exit_code/duration/summary）。"""
-        cmd = (step.get('instruction') or '').strip()
-        timeout_sec = step.get('timeout_sec')
-        short_cmd = cmd[:80] + ('…' if len(cmd) > 80 else '')
+        """
+        执行单个 bash 步骤并自动收口，返回结果行增量（status/exit_code/duration/summary）。
+        """
+        cmd = (step.get("instruction") or "").strip()
+        timeout_sec = step.get("timeout_sec")
+        short_cmd = cmd[:80] + ("…" if len(cmd) > 80 else "")
         if not cmd:
-            self.fail_run(run_id, error='bash 步骤 instruction 为空，无可执行命令', name=name)
-            return {'status': 'failed', 'summary': 'bash 步骤 instruction 为空'}
+            self.fail_run(run_id, error="bash 步骤 instruction 为空，无可执行命令", name=name)
+            return {"status": "failed", "summary": "bash 步骤 instruction 为空"}
         t0 = time.monotonic()
         try:
-            rc, output, timed_out = self._run_shell(cmd, timeout_sec, output_head_chars,
-                                                    output_tail_chars)
-        except Exception as e:  # noqa: BLE001 — 任何启动异常都按步骤失败收口，不悬 running
-            self.fail_run(run_id, error=f'命令启动异常: {e}', name=name)
-            return {'status': 'failed',
-                    'summary': f'命令启动异常: {e} | {short_cmd}'}
+            rc, output, timed_out = self._run_shell(cmd, timeout_sec, output_head_chars, output_tail_chars)
+        except Exception as e:
+            self.fail_run(run_id, error=f"命令启动异常: {e}", name=name)
+            return {"status": "failed", "summary": f"命令启动异常: {e} | {short_cmd}"}
         duration = round(time.monotonic() - t0, 1)
         if timed_out:
-            self.fail_run(run_id, error=f'超时（>{timeout_sec}s）已强杀进程树 | {short_cmd}',
-                          name=name)
-            status, summary = 'failed', f'timeout after {timeout_sec}s | {short_cmd}'
+            self.fail_run(run_id, error=f"超时（>{timeout_sec}s）已强杀进程树 | {short_cmd}", name=name)
+            status, summary = "failed", f"timeout after {timeout_sec}s | {short_cmd}"
         elif rc == 0:
-            self.finish_run(run_id, output=output, summary=f'exit=0 ({duration}s) | {short_cmd}',
-                            name=name)
-            status, summary = 'succeeded', f'exit=0 ({duration}s) | {short_cmd}'
+            self.finish_run(run_id, output=output, summary=f"exit=0 ({duration}s) | {short_cmd}", name=name)
+            status, summary = "succeeded", f"exit=0 ({duration}s) | {short_cmd}"
         else:
-            disposition = self.fail_run(run_id, error=f'exit={rc} | {short_cmd}', name=name)
-            if disposition == 'retried':
-                log.warning("步骤「%s」失败但重试预算未耗尽，已回 pending；"
-                            "run 不自动重跑（防确定性失败死循环），请排查后再次 run/retry",
-                            step.get('name'))
-            status = 'retried' if disposition == 'retried' else 'failed'
-            summary = f'exit={rc} ({duration}s) | {short_cmd}'
-        return {'status': status, 'exit_code': None if timed_out else rc,
-                'duration_sec': duration, 'summary': summary}
+            disposition = self.fail_run(run_id, error=f"exit={rc} | {short_cmd}", name=name)
+            if disposition == "retried":
+                log.warning(
+                    "步骤「%s」失败但重试预算未耗尽，已回 pending；"
+                    "run 不自动重跑（防确定性失败死循环），请排查后再次 run/retry",
+                    step.get("name"),
+                )
+            status = "retried" if disposition == "retried" else "failed"
+            summary = f"exit={rc} ({duration}s) | {short_cmd}"
+        return {"status": status, "exit_code": None if timed_out else rc, "duration_sec": duration, "summary": summary}
 
     @staticmethod
     def _run_shell(
@@ -318,9 +325,11 @@ class LongTaskManager:
         杀后回收僵尸并返回 ``(None, 已有输出, True)``。输出超长时保头尾、中间省略。
         """
         p = subprocess.Popen(
-            cmd, shell=True,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            start_new_session=(os.name != 'nt'),
+            cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            start_new_session=(os.name != "nt"),
         )
         timed_out = False
         try:
@@ -328,13 +337,14 @@ class LongTaskManager:
             rc: int | None = p.returncode
         except subprocess.TimeoutExpired:
             timed_out = True
-            if os.name == 'nt':
-                subprocess.run(['taskkill', '/PID', str(p.pid), '/T', '/F'],
-                               capture_output=True, check=False)
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True, check=False)
             else:
                 import errno
+
                 try:
-                    os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+                    # POSIX 专属属性，Windows 平台 mypy 无法识别，运行时不会走到
+                    os.killpg(os.getpgid(p.pid), signal.SIGKILL)  # type: ignore[attr-defined]
                 except ProcessLookupError:
                     pass
                 except OSError as e:
@@ -348,24 +358,26 @@ class LongTaskManager:
                 try:
                     out, _ = p.communicate(timeout=10)
                 except Exception:
-                    out = b''
+                    out = b""
             rc = None
-        text = (out or b'').decode(errors='replace')
+        text = (out or b"").decode(errors="replace")
         if len(text) > output_head_chars + output_tail_chars:
-            text = (text[:output_head_chars]
-                    + f'\n…[输出过长，中间省略 {len(text) - output_head_chars - output_tail_chars} 字符]…\n'
-                    + text[-output_tail_chars:])
+            text = (
+                text[:output_head_chars]
+                + f"\n…[输出过长，中间省略 {len(text) - output_head_chars - output_tail_chars} 字符]…\n"
+                + text[-output_tail_chars:]
+            )
         return rc, text, timed_out
+
     # endregion
 
     # region ======== 恢复 ========
-    def sweep(self, heartbeat_timeout_sec: int | None = None,
-              name: str | None = None) -> list[dict[str, Any]]:
+    def sweep(self, heartbeat_timeout_sec: int | None = None, name: str | None = None) -> list[dict[str, Any]]:
         return self.get_service(name).sweep(heartbeat_timeout_sec=heartbeat_timeout_sec)
 
-    def verify_task(self, task_id: int, fix: bool = False,
-                    name: str | None = None) -> list[dict[str, Any]]:
+    def verify_task(self, task_id: int, fix: bool = False, name: str | None = None) -> list[dict[str, Any]]:
         return self.get_service(name).verify_task(task_id, fix=fix)
+
     # endregion
 
     # region ======== 产物 / 事件 ========
@@ -378,8 +390,7 @@ class LongTaskManager:
         note: str | None = None,
         name: str | None = None,
     ) -> int:
-        return self.get_service(name).add_artifact(task_id, art_type, path,
-                                                   step_id=step_id, note=note)
+        return self.get_service(name).add_artifact(task_id, art_type, path, step_id=step_id, note=note)
 
     def list_artifacts(self, task_id: int, name: str | None = None) -> list[dict[str, Any]]:
         return self.get_service(name).list_artifacts(task_id)
@@ -389,27 +400,28 @@ class LongTaskManager:
         task_id: int,
         event_type: str,
         message: str,
-        level: str = 'info',
+        level: str = "info",
         step_id: int | None = None,
         run_id: int | None = None,
         name: str | None = None,
     ) -> int:
-        return self.get_service(name).add_event(task_id, event_type, message, level=level,
-                                                step_id=step_id, run_id=run_id)
+        return self.get_service(name).add_event(
+            task_id, event_type, message, level=level, step_id=step_id, run_id=run_id
+        )
 
-    def list_events(self, task_id: int, limit: int = 100,
-                    name: str | None = None) -> list[dict[str, Any]]:
+    def list_events(self, task_id: int, limit: int = 100, name: str | None = None) -> list[dict[str, Any]]:
         return self.get_service(name).list_events(task_id, limit=limit)
+
     # endregion
 
     # region ======== 模板 ========
     def create_template(self, t: TaskTemplate, name: str | None = None) -> int:
         return self.get_service(name).create_template(t)
 
-    def get_template_by_name(self, template_name: str,
-                             name: str | None = None) -> TaskTemplate | None:
+    def get_template_by_name(self, template_name: str, name: str | None = None) -> TaskTemplate | None:
         return self.get_service(name).get_template_by_name(template_name)
 
     def list_templates(self, limit: int = 50, name: str | None = None) -> list[dict[str, Any]]:
         return self.get_service(name).list_templates(limit=limit)
+
     # endregion

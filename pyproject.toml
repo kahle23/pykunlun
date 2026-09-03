@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pykunlun"
-version = "0.0.4"
+version = "0.0.5"
 description = "Kunlun，与具体业务无关的 Python 底层能力库。承载跨平台、跨业务的通用抽象与基础设施，不依赖上层应用包。"
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -32,13 +32,15 @@ rapidocr = ["rapidocr", "onnxruntime"]
 
 [tool.mypy]
 python_version = "3.10"
-warn_return_any = true
+strict = true
 warn_unused_configs = true
 
-# 延迟加载的可选重依赖：仅在 RapidOcr.__init__ 内按需 import，
-# 用户未安装 rapidocr extra 时不应被 mypy 判为错误。
+# 延迟加载的可选重依赖：rapidocr/onnxruntime 仅在 RapidOcr.__init__ 内按需 import，
+# 用户未安装 rapidocr extra 时不应被 mypy 判为错误；numpy/cv2 是该 extra 的传递依赖
+# （rapidocr v3.x 会带上 opencv-python/numpy），代码仅做 TYPE_CHECKING 提示与
+# 函数内延迟导入，检查环境未装时同样放行。
 [[tool.mypy.overrides]]
-module = ["rapidocr", "rapidocr.*"]
+module = ["numpy", "cv2", "rapidocr", "onnxruntime"]
 ignore_missing_imports = true
 
 [tool.ruff]

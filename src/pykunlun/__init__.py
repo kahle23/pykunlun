@@ -4,7 +4,7 @@ Kunlun — 与具体业务无关的底层能力库。
 承载跨平台、跨业务的通用抽象与基础设施，不依赖上层应用包。上层包按需在此之上扩展具体实现。
 
 导入约定：本包不通过顶级命名空间 re-export 任何符号，请按子包/子模块路径导入，
-例如 ``from pykunlun.util import timeutil``、``from pykunlun.core import action``。
+例如 ``from pykunlun.util import timeutil``、``from pykunlun.action import ActionManager``。
 """
 
 from importlib.metadata import version
