@@ -18,14 +18,14 @@ polylines / putText 也只接收 ndarray）。本模块不在顶部导入它们�
 
 import os
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any, ClassVar, Union
 
 from pykunlun.util import logutil
 
 from .model import OcrCfg, OcrResult
 
 if TYPE_CHECKING:
-    import numpy as np
+    import numpy.typing as npt
 
 log = logutil.getLogger(__name__)
 
@@ -110,9 +110,9 @@ class OcrEngine(ABC):
         """
         拦截实例属性赋值，保护 :attr:`engine_type` 与 :attr:`cfg` 不被运行时篡改。
 
-        - ``engine_type``：基类虽把它声明为抽象只读 property，但子类为满足抽象约束会用类级常量
-          ``engine_type = 'easy'`` 覆盖——该常量是普通字符串（非 data descriptor），会遮蔽基类 property，
-          使 property 的只读保护失效，``instance.engine_type = x`` 将悄悄创建实例级遮蔽。
+        - ``engine_type``：基类以 ClassVar 声明（无默认值），子类为满足约束会用类级常量
+          ``engine_type = 'easy'`` 覆盖——该常量是普通字符串（非 data descriptor），
+          ``instance.engine_type = x`` 将悄悄创建实例级遮蔽。
           本方法显式抛 :class:`AttributeError` 堵住此缺口。
         - ``cfg``：允许构造时首次赋值（由 :meth:`__init__` 触发），构造完成后禁止替换。
           绑定的 cfg 已经过 :meth:`_validate_and_prepare_cfg` 校验与默认值补全，
@@ -157,27 +157,22 @@ class OcrEngine(ABC):
 
     # region ======== 引擎标识（抽象） ========
 
-    @property
-    @abstractmethod
-    def engine_type(self) -> str:
-        """
-        本实现类代表的引擎**类型**标识（如 ``rapid``、``easy``、``paddle``、``paddle3``、``server``）。
-
-        由各实现类以**类级常量**形式硬编码提供，标识"本类是哪种引擎的策略"。
-        基类声明为抽象只读 property，强制子类在类级覆盖；
-        其运行时不可修改性由 :meth:`__setattr__` 显式拦截保证（详见该方法的说明）。
-
-        注意：这是"类型"而非"名字"。同一类型可在 :class:`OcrManager` 中注册多份不同配置的
-        实例，由 :meth:`OcrManager.register_engine` 的 ``name``（实例别名）区分。
-        """
-        pass
+    #: 本实现类代表的引擎**类型**标识（如 ``rapid``、``easy``、``paddle``、``paddle3``、``server``）。
+    #:
+    #: 由各实现类以**类级常量**形式硬编码提供，标识"本类是哪种引擎的策略"。
+    #: 基类以 ClassVar 声明（无默认值）强制子类在类级覆盖；
+    #: 其运行时不可修改性由 :meth:`__setattr__` 显式拦截保证（详见该方法的说明）。
+    #:
+    #: 注意：这是"类型"而非"名字"。同一类型可在 :class:`OcrManager` 中注册多份不同配置的
+    #: 实例，由 :meth:`OcrManager.register_engine` 的 ``name``（实例别名）区分。
+    engine_type: ClassVar[str]
 
     # endregion
 
     # region ======== 引擎差异钩子 ========
 
     @abstractmethod
-    def _recognize_array(self, image: 'np.ndarray') -> list[OcrResult]:
+    def _recognize_array(self, image: 'npt.NDArray[Any]') -> list[OcrResult]:
         """
         对已加载的图像数组执行 OCR 识别（子类唯一需实现的核心方法）。
 
@@ -199,7 +194,7 @@ class OcrEngine(ABC):
 
     # region ======== 图片加载与结果清洗（可覆写钩子） ========
 
-    def _load_image(self, image: Union[str, 'np.ndarray']) -> 'np.ndarray':
+    def _load_image(self, image: Union[str, 'npt.NDArray[Any]']) -> 'npt.NDArray[Any]':
         """
         将输入统一加载为 OpenCV 图像数组（**可覆写钩子**）。
 
@@ -228,7 +223,10 @@ class OcrEngine(ABC):
         if isinstance(image, str):
             if not os.path.exists(image):
                 raise FileNotFoundError(f"图片文件不存在: {image}")
-            img = cv2.imread(image)
+            # cv2.imread 在 Windows 上对含非 ASCII 字符（如中文文件名）的路径会静默
+            # 返回 None（底层经 ANSI 代码页打开文件）；np.fromfile 走 Unicode 文件 API
+            # 读字节、cv2.imdecode 解码，等价 imread 默认的 IMREAD_COLOR，任何代码页下稳定。
+            img = cv2.imdecode(np.fromfile(image, dtype=np.uint8), cv2.IMREAD_COLOR)
             if img is None:
                 raise ValueError(
                     f"无法读取图片文件，请检查文件是否损坏或格式是否支持: {image}"
@@ -269,7 +267,7 @@ class OcrEngine(ABC):
 
     # region ======== 通用识别接口（模板方法） ========
 
-    def recognize(self, image: Union[str, 'np.ndarray']) -> str:
+    def recognize(self, image: Union[str, 'npt.NDArray[Any]']) -> str:
         """
         识别图片中的文字，返回纯文本结果。
 
@@ -289,7 +287,7 @@ class OcrEngine(ABC):
         return '\n'.join(r.text for r in results)
 
     def recognize_with_details(
-        self, image: Union[str, 'np.ndarray']
+        self, image: Union[str, 'npt.NDArray[Any]']
     ) -> list[OcrResult]:
         """
         识别图片中的文字，返回包含位置与置信度的详细结果。
@@ -310,18 +308,18 @@ class OcrEngine(ABC):
 
     def recognize_and_draw(
         self,
-        image: Union[str, 'np.ndarray'],
+        image: Union[str, 'npt.NDArray[Any]'],
         color: tuple[int, int, int] = (0, 255, 0),
         thickness: int | None = None,
         output_path: str | None = None,
-    ) -> 'np.ndarray':
+    ) -> 'npt.NDArray[Any]':
         """
         识别图片中的文字，并在图片上绘制边界框与文本标签。
 
         Args:
             image: 图片路径或 OpenCV 图像数组。传入数组时会创建副本，不修改原图。
             color: 边界框与文本颜色，BGR 格式。
-            thickness: 边界框线条粗细；为 ``None`` 时透传给 cv2、沿用其默认（1）。
+            thickness: 边界框线条粗细；为 ``None`` 时按 cv2 默认粗细（1）绘制。
             output_path: 结果保存路径；为 ``None`` 时仅返回图像数组不保存。
 
         Returns:
@@ -336,9 +334,12 @@ class OcrEngine(ABC):
         import numpy as np
 
         img = self._load_image(image)
+        line_thickness = 1 if thickness is None else thickness
         for item in self._filter_results(self._recognize_array(img)):
             pts = np.array(item.bbox, np.int32).reshape((-1, 1, 2))
-            cv2.polylines(img, [pts], isClosed=True, color=color, thickness=thickness)
+            cv2.polylines(
+                img, [pts], isClosed=True, color=color, thickness=line_thickness
+            )
 
             x, y = int(item.bbox[0][0]), int(item.bbox[0][1]) - 10
             cv2.putText(
@@ -352,7 +353,12 @@ class OcrEngine(ABC):
             )
 
         if output_path:
-            cv2.imwrite(output_path, img)
+            # 同 _load_image：cv2.imwrite 对 Windows 非 ASCII 输出路径会静默失败，
+            # 用 imencode + tofile（Unicode 文件 API）替代，中文路径也能保存。
+            ext = os.path.splitext(output_path)[1] or '.png'
+            ok, buf = cv2.imencode(ext, img)
+            if ok:
+                buf.tofile(output_path)
 
         return img
 

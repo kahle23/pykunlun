@@ -6,7 +6,9 @@
 """
 
 import importlib
+import importlib.util
 from collections.abc import Callable
+from types import ModuleType
 from typing import Any
 
 from ..system import pip
@@ -15,7 +17,7 @@ from . import logutil
 log = logutil.getLogger(__name__)
 
 
-def import_module(module_name: str, install_name: str | None = None):
+def import_module(module_name: str, install_name: str | None = None) -> ModuleType:
     """
     动态导入模块，未安装时自动安装。
 
@@ -47,6 +49,32 @@ def import_module(module_name: str, install_name: str | None = None):
         # 安装成功后，重新导入模块
         log.info(f"{install_name} 安装成功，重新导入 {module_name}")
         return importlib.import_module(module_name)
+
+
+def is_installed(module_name: str) -> bool:
+    """
+    探测模块是否已安装（不实际导入）。
+
+    基于 :func:`importlib.util.find_spec` 只查元数据、零 import 副作用，
+    适合"缺依赖时自动安装"的前置探测（探测后再 :func:`import_module` 或直接 import）。
+    与哨兵导入（``try: import x`` / ``except ImportError``）不同，
+    本函数不会执行模块顶层代码，也不会触发依赖包的连锁导入。
+
+    Args:
+        module_name: 模块名（如 "numpy"、"onnxruntime"、"cv2"）。
+
+    Returns:
+        已安装返回 True；未安装返回 False。
+
+    Raises:
+        ValueError: 传入相对模块名（如 ``.sub``）而无父包上下文时抛出
+            （与 importlib 语义一致；绝对模块名不受影响）。
+    """
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except (ImportError, ValueError):
+        # ImportError: 父包不存在或模块名非法；ValueError: 相对模块名无上下文
+        return False
 
 
 def create_lazy_loader(lazy_imports: dict[str, str]) -> Callable[[str], Any]:

@@ -18,15 +18,15 @@ DEFAULT_MIRRORS: list[str] = [
     'https://pypi.org/simple/',                      # 官方
 ]
 
-# Python 命令，默认使用当前正在运行的 Python 解释器
-_PYTHON_COMMAND: str = pyinfo.get_python_executable()
+# Python 命令（可变模块状态，可经 set_python_command 替换），默认使用当前正在运行的 Python 解释器
+_python_command: str = pyinfo.get_python_executable()
 
 
 def get_python_command() -> str:
     """
     获取当前 Python 命令。
     """
-    return _PYTHON_COMMAND
+    return _python_command
 
 
 def set_python_command(command: str) -> None:
@@ -36,8 +36,8 @@ def set_python_command(command: str) -> None:
     Args:
         command: Python 命令，如 'python3' 或 'D:\\Python39\\python.exe'。
     """
-    global _PYTHON_COMMAND
-    _PYTHON_COMMAND = command
+    global _python_command
+    _python_command = command
 
 
 def execute(
@@ -68,7 +68,7 @@ def execute(
     # 初始化错误列表
     errors: list[str] = []
     # 构建基础命令（包含所有参数，不含镜像参数）
-    base_command = [_PYTHON_COMMAND, '-m', 'pip', command] + args
+    base_command = [_python_command, '-m', 'pip', command] + args
     # 依次尝试每个镜像
     for mirror in mirrors_to_try:
         # 复制基础命令，避免修改原始列表
@@ -102,7 +102,8 @@ def execute(
     # 所有镜像都失败，返回错误摘要
     error_detail = "\n".join(errors) if mirrors else errors[0]
     mirror_info = f" using {len(mirrors)} mirrors" if mirrors else ""
-    return (False, f"Command failed: {cmd_str}{mirror_info}\n{error_detail}")
+    failed_cmd = ' '.join(base_command)
+    return (False, f"Command failed: {failed_cmd}{mirror_info}\n{error_detail}")
 
 
 def install(

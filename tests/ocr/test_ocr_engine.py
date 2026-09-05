@@ -14,7 +14,7 @@ pykunlun.ai.ocr 的单元测试。
 
 import pytest
 
-from pykunlun.ai.ocr import OcrCfg, OcrEngine, OcrManager
+from pykunlun.ai.ocr import OcrCfg, OcrEngine, OcrManager, OcrResult
 
 
 class _StubOcr(OcrEngine):
@@ -22,7 +22,8 @@ class _StubOcr(OcrEngine):
 
     engine_type = 'stub'
 
-    def _recognize_array(self, image):
+    def _recognize_array(self, image: object) -> list[OcrResult]:
+        del image
         return []
 
 
@@ -49,7 +50,7 @@ class TestOcrEngineEngineType:
     def test_engine_type_immutable(self):
         eng = _StubOcr(OcrCfg())
         with pytest.raises(AttributeError):
-            eng.engine_type = 'x'
+            eng.engine_type = 'x'  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_cfg_immutable_after_construction(self):
         eng = _StubOcr(OcrCfg())
@@ -124,9 +125,9 @@ class TestOcrManager:
         assert 'default' not in m.get_registered_engine_names()
 
     def test_config_loader_fallback(self):
-        loaded = []
+        loaded: list[str] = []
 
-        def loader(mgr, name):
+        def loader(mgr: OcrManager, name: str) -> None:
             loaded.append(name)
             mgr.register_engine(name, _StubOcr(OcrCfg()))
 

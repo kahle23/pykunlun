@@ -8,7 +8,7 @@ class TestPipExecuteInstall:
     """测试 execute 的安装逻辑"""
 
     @patch('pykunlun.system.pip.subprocess.run')
-    def test_install_success_first_mirror(self, mock_run):
+    def test_install_success_first_mirror(self, mock_run: MagicMock):
         """测试第一个镜像安装成功"""
         mock_run.return_value.returncode = 0
 
@@ -19,7 +19,7 @@ class TestPipExecuteInstall:
         mock_run.assert_called_once()
 
     @patch('pykunlun.system.pip.subprocess.run')
-    def test_install_fail_first_success_second(self, mock_run):
+    def test_install_fail_first_success_second(self, mock_run: MagicMock):
         """测试第一个镜像失败，第二个镜像成功"""
         mock_run.side_effect = [
             Exception("Connection refused"),
@@ -33,7 +33,7 @@ class TestPipExecuteInstall:
         assert mock_run.call_count == 2
 
     @patch('pykunlun.system.pip.subprocess.run')
-    def test_install_all_mirrors_fail(self, mock_run):
+    def test_install_all_mirrors_fail(self, mock_run: MagicMock):
         """测试所有镜像都失败"""
         mock_run.side_effect = Exception("Connection refused")
 
@@ -45,7 +45,7 @@ class TestPipExecuteInstall:
         assert mock_run.call_count == len(DEFAULT_MIRRORS)
 
     @patch('pykunlun.system.pip.subprocess.run')
-    def test_install_timeout(self, mock_run):
+    def test_install_timeout(self, mock_run: MagicMock):
         """测试安装超时"""
         mock_run.side_effect = [
             subprocess.TimeoutExpired(cmd=['python', '-m', 'pip'], timeout=60),
@@ -58,7 +58,7 @@ class TestPipExecuteInstall:
         assert DEFAULT_MIRRORS[1] in msg
 
     @patch('pykunlun.system.pip.subprocess.run')
-    def test_install_with_custom_mirrors(self, mock_run):
+    def test_install_with_custom_mirrors(self, mock_run: MagicMock):
         """测试使用自定义镜像列表"""
         custom_mirrors = ['https://custom-mirror.com/simple/']
         mock_run.return_value.returncode = 0
@@ -70,7 +70,7 @@ class TestPipExecuteInstall:
         mock_run.assert_called_once()
 
     @patch('pykunlun.system.pip.subprocess.run')
-    def test_install_with_version(self, mock_run):
+    def test_install_with_version(self, mock_run: MagicMock):
         """测试安装指定版本的包"""
         mock_run.return_value.returncode = 0
 
@@ -80,7 +80,7 @@ class TestPipExecuteInstall:
         assert 'requests==2.31.0' in msg
 
     @patch('pykunlun.system.pip.subprocess.run')
-    def test_upgrade_success(self, mock_run):
+    def test_upgrade_success(self, mock_run: MagicMock):
         """测试升级成功"""
         mock_run.return_value.returncode = 0
 
@@ -91,7 +91,7 @@ class TestPipExecuteInstall:
         assert DEFAULT_MIRRORS[0] in msg
 
     @patch('pykunlun.system.pip.subprocess.run')
-    def test_uninstall_success_without_mirrors(self, mock_run):
+    def test_uninstall_success_without_mirrors(self, mock_run: MagicMock):
         """测试卸载成功（不使用镜像）"""
         mock_run.return_value.returncode = 0
 
@@ -102,7 +102,7 @@ class TestPipExecuteInstall:
         assert 'requests' in msg
 
     @patch('pykunlun.system.pip.subprocess.run')
-    def test_uninstall_fail_without_mirrors(self, mock_run):
+    def test_uninstall_fail_without_mirrors(self, mock_run: MagicMock):
         """测试卸载失败（不使用镜像）"""
         mock_run.side_effect = subprocess.CalledProcessError(
             1, 'cmd', stderr='package not installed'
@@ -119,7 +119,7 @@ class TestInstall:
     """测试 install 公开方法"""
 
     @patch('pykunlun.system.pip.execute')
-    def test_install_single_package(self, mock_execute):
+    def test_install_single_package(self, mock_execute: MagicMock):
         """测试安装单个包（字符串）"""
         mock_execute.return_value = (True, "success")
 
@@ -130,7 +130,7 @@ class TestInstall:
         mock_execute.assert_called_once_with('install', ['requests'], timeout=300, mirrors=DEFAULT_MIRRORS)
 
     @patch('pykunlun.system.pip.execute')
-    def test_install_multiple_packages_all_success(self, mock_execute):
+    def test_install_multiple_packages_all_success(self, mock_execute: MagicMock):
         """测试批量安装所有包成功"""
         mock_execute.return_value = (True, "success")
 
@@ -141,7 +141,7 @@ class TestInstall:
         assert mock_execute.call_count == 2
 
     @patch('pykunlun.system.pip.execute')
-    def test_install_multiple_packages_partial_success(self, mock_execute):
+    def test_install_multiple_packages_partial_success(self, mock_execute: MagicMock):
         """测试批量安装部分成功"""
         mock_execute.side_effect = [
             (True, "success"),
@@ -155,7 +155,7 @@ class TestInstall:
         assert 'nonexistent-package' in fail_list[0]
 
     @patch('pykunlun.system.pip.execute')
-    def test_install_empty_list(self, mock_execute):
+    def test_install_empty_list(self, mock_execute: MagicMock):
         """测试安装空列表"""
         success_list, fail_list = install([])
 
@@ -164,7 +164,7 @@ class TestInstall:
         mock_execute.assert_not_called()
 
     @patch('pykunlun.system.pip.execute')
-    def test_install_with_custom_timeout(self, mock_execute):
+    def test_install_with_custom_timeout(self, mock_execute: MagicMock):
         """测试使用自定义超时时间"""
         mock_execute.return_value = (True, "success")
 
@@ -173,7 +173,7 @@ class TestInstall:
         mock_execute.assert_called_once_with('install', ['requests'], timeout=60, mirrors=DEFAULT_MIRRORS)
 
     @patch('pykunlun.system.pip.execute')
-    def test_install_with_custom_mirrors(self, mock_execute):
+    def test_install_with_custom_mirrors(self, mock_execute: MagicMock):
         """测试使用自定义镜像列表"""
         custom_mirrors = ['https://custom.com/simple/']
         mock_execute.return_value = (True, "success")
@@ -183,7 +183,7 @@ class TestInstall:
         mock_execute.assert_called_once_with('install', ['requests'], timeout=300, mirrors=custom_mirrors)
 
     @patch('pykunlun.system.pip.execute')
-    def test_install_multiple_with_mirrors(self, mock_execute):
+    def test_install_multiple_with_mirrors(self, mock_execute: MagicMock):
         """测试批量安装时传递自定义镜像"""
         custom_mirrors = ['https://custom.com/simple/']
         mock_execute.return_value = (True, "success")
