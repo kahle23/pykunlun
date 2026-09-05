@@ -18,7 +18,7 @@ import os
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
-from typing import IO, Any, cast
+from typing import IO, Any, ClassVar, cast
 
 from pykunlun.util import cmdutil, fmtutil, logutil
 
@@ -107,11 +107,10 @@ class RdbBackupService(ABC):
         """
         拦截实例属性赋值，保护类级常量不被运行时篡改。
 
-        - ``db_type`` / ``tool_name`` / ``install_hint``：基类虽声明为抽象只读 property，
-          但子类为满足抽象约束会用类级常量 ``db_type = 'mysql'`` 覆盖——该常量是普通字符串
-          （非 data descriptor），会遮蔽基类 property，使 property 的只读保护失效，
-          ``instance.xxx = y`` 将悄悄创建实例级遮蔽。本方法显式抛 :class:`AttributeError`
-          堵住此缺口（与 :class:`RdbClient` 同一思路）。
+        - ``db_type`` / ``tool_name`` / ``install_hint``：基类以 ClassVar 声明（无默认值），
+          子类用类级常量 ``db_type = 'mysql'`` 覆盖——该常量是普通字符串（非 data
+          descriptor），``instance.xxx = y`` 将悄悄创建实例级遮蔽。本方法显式抛
+          :class:`AttributeError` 堵住此缺口（与 :class:`RdbClient` 同一思路）。
         - ``DEFAULT_TIMEOUT``：虽非抽象 property（有通用默认值，子类按需在**类级**覆盖），
           但同样不应在**实例级**被遮蔽——``instance.DEFAULT_TIMEOUT = 0`` 会让所有命令立即超时。
         - 其余属性（无状态策略服务通常无额外实例属性）照常赋值。
@@ -142,35 +141,15 @@ class RdbBackupService(ABC):
         """
         return None
 
-    @property
-    @abstractmethod
-    def db_type(self) -> str:
-        """
-        数据库类型标识（如 mysql、postgresql、sqlite）。
+    #: 数据库类型标识（如 mysql、postgresql、sqlite）。
+    #: 基类只声明不实现（ClassVar 无默认值），子类以类级常量提供，如 ``db_type = 'mysql'``。
+    db_type: ClassVar[str]
 
-        子类以类级常量形式提供，如 ``db_type = 'mysql'``。
-        """
-        pass
+    #: 备份工具名称（如 mysqldump、pg_dump），子类以类级常量提供。
+    tool_name: ClassVar[str]
 
-    @property
-    @abstractmethod
-    def tool_name(self) -> str:
-        """
-        备份工具名称（如 mysqldump、pg_dump）。
-
-        子类以类级常量形式提供。
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def install_hint(self) -> str:
-        """
-        工具未安装时的提示信息。
-
-        子类以类级常量形式提供。
-        """
-        pass
+    #: 工具未安装时的提示信息，子类以类级常量提供。
+    install_hint: ClassVar[str]
 
     def is_available(self) -> bool:
         """

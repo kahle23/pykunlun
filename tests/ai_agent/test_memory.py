@@ -10,6 +10,7 @@ pykunlun.ai_agent 记忆能力的单元测试。
 
 import os
 import tempfile
+from collections.abc import Iterator
 
 import pytest
 
@@ -20,15 +21,13 @@ from pykunlun.ai_agent import (
     tokenize_query,
 )
 
-
 # region ======== fixture ========
 
 @pytest.fixture
-def store_path():
+def store_path() -> Iterator[str]:
     """提供一个临时 sqlite 文件路径，测试结束自动清理。"""
-    f = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
-    f.close()
-    path = f.name
+    fd, path = tempfile.mkstemp(suffix='.db')
+    os.close(fd)  # 立即关闭句柄：sqlite 需按路径自行打开，Windows 下句柄占用会阻塞
     yield path
     try:
         os.unlink(path)
@@ -37,7 +36,7 @@ def store_path():
 
 
 @pytest.fixture
-def store(store_path):
+def store(store_path: str) -> SqliteMemoryStore:
     """已初始化的 SqliteMemoryStore。"""
     s = SqliteMemoryStore(store_path)
     s.init_store()
@@ -45,7 +44,7 @@ def store(store_path):
 
 
 @pytest.fixture
-def mgr(store):
+def mgr(store: SqliteMemoryStore) -> MemoryManager:
     """已注册默认 store 的 MemoryManager。"""
     m = MemoryManager()
     m.register(MemoryManager.DEFAULT_NAME, store)
@@ -80,7 +79,7 @@ def test_rejects_memory_path():
         SqliteMemoryStore(':memory:')
 
 
-def test_init_is_idempotent(store):
+def test_init_is_idempotent(store: SqliteMemoryStore):
     # 重复初始化不应报错、不丢数据
     store.remember(MemoryRecord(scope='a', category='other', title='t', content='c'))
     store.init_store()
@@ -92,7 +91,7 @@ def test_init_is_idempotent(store):
 
 # region ======== remember / get ========
 
-def test_remember_returns_id_and_get_roundtrip(store):
+def test_remember_returns_id_and_get_roundtrip(store: SqliteMemoryStore):
     rid = store.remember(MemoryRecord(
         scope='app', category='decision', title='用 Hutool',
         content='字符串用 StrUtil', keywords='hutool,工具'))
@@ -104,7 +103,7 @@ def test_remember_returns_id_and_get_roundtrip(store):
     assert rec.is_deleted == 0
 
 
-def test_get_missing_returns_none(store):
+def test_get_missing_returns_none(store: SqliteMemoryStore):
     assert store.get(99999) is None
 
 # endregion
@@ -112,7 +111,7 @@ def test_get_missing_returns_none(store):
 
 # region ======== recall 计分与排序 ========
 
-def _seed(store):
+def _seed(store: SqliteMemoryStore) -> None:
     store.remember(MemoryRecord(scope='app', category='decision', title='用 Hutool',
                                 content='字符串用 StrUtil', keywords='hutool,工具'))
     store.remember(MemoryRecord(scope='app', category='no-go', title='别动 auth',
@@ -121,7 +120,7 @@ def _seed(store):
                                 title='抽象层路径', content='ai_agent/memory.py', keywords=''))
 
 
-def test_recall_scoring(store):
+def test_recall_scoring(store: SqliteMemoryStore):
     _seed(store)
     rows = store.recall('hutool', scope='app')
     # title(3) + keywords(2) = 5
@@ -130,7 +129,7 @@ def test_recall_scoring(store):
     assert rows[0]['title'] == '用 Hutool'
 
 
-def test_recall_pinned_sorts_first(store):
+def test_recall_pinned_sorts_first(store: SqliteMemoryStore):
     """置顶项即便相关度低也排在最前。"""
     _seed(store)
     rows = store.recall('auth')  # 命中 title=3
@@ -138,26 +137,26 @@ def test_recall_pinned_sorts_first(store):
     assert rows[0]['title'] == '别动 auth'
 
 
-def test_recall_scope_filter(store):
+def test_recall_scope_filter(store: SqliteMemoryStore):
     _seed(store)
     assert len(store.recall('路径', scope='app')) == 0
     assert len(store.recall('路径', scope='pykunlun')) == 1
 
 
-def test_recall_category_filter(store):
+def test_recall_category_filter(store: SqliteMemoryStore):
     _seed(store)
     rows = store.recall('', scope='app', category='no-go')  # 空查询=浏览
     assert len(rows) == 1
     assert rows[0]['category'] == 'no-go'
 
 
-def test_recall_empty_query_browses_all(store):
+def test_recall_empty_query_browses_all(store: SqliteMemoryStore):
     _seed(store)
     rows = store.recall('')
     assert len(rows) == 3
 
 
-def test_recall_limit(store):
+def test_recall_limit(store: SqliteMemoryStore):
     for i in range(5):
         store.remember(MemoryRecord(scope='app', category='other', title=f't{i}', content='x'))
     assert len(store.recall('', scope='app', limit=3)) == 3
@@ -167,41 +166,43 @@ def test_recall_limit(store):
 
 # region ======== 去重查找 / update / forget / touch ========
 
-def test_find_by_scope_title(store):
+def test_find_by_scope_title(store: SqliteMemoryStore):
     store.remember(MemoryRecord(scope='app', category='other', title='T', content='c1'))
     dups = store.find_by_scope_title('app', 'T')
     assert len(dups) == 1
     assert store.find_by_scope_title('app', '其他') == []
 
 
-def test_update_whitelist(store):
+def test_update_whitelist(store: SqliteMemoryStore):
     rid = store.remember(MemoryRecord(scope='app', category='other', title='T',
                                       content='c', confidence=70, use_count=5))
     ok = store.update(rid, {'content': 'new', 'confidence': 95, 'pinned': 1})
     assert ok is True
     rec = store.get(rid)
+    assert rec is not None
     assert rec.content == 'new'
     assert rec.confidence == 95
     assert rec.pinned == 1
 
 
-def test_update_ignores_non_updatable(store):
+def test_update_ignores_non_updatable(store: SqliteMemoryStore):
     """id/use_count/is_deleted/时间戳不在白名单内，应被忽略。"""
     rid = store.remember(MemoryRecord(scope='app', category='other', title='T', content='c'))
     # 这些字段不在 UPDATABLE_FIELDS 中
     ok = store.update(rid, {'id': 999, 'use_count': 100, 'is_deleted': 1})
     assert ok is False
     rec = store.get(rid)
+    assert rec is not None
     assert rec.id == rid
     assert rec.use_count == 0
     assert rec.is_deleted == 0
 
 
-def test_update_missing_returns_false(store):
+def test_update_missing_returns_false(store: SqliteMemoryStore):
     assert store.update(88888, {'content': 'x'}) is False
 
 
-def test_forget_soft_delete(store):
+def test_forget_soft_delete(store: SqliteMemoryStore):
     rid = store.remember(MemoryRecord(scope='app', category='other', title='T', content='c'))
     assert store.forget(rid) is True
     assert store.get(rid) is None  # get 默认排除软删除
@@ -210,14 +211,16 @@ def test_forget_soft_delete(store):
     assert store.forget(rid) is False  # 已删除，再次 forget 不命中
 
 
-def test_touch_increments(store):
+def test_touch_increments(store: SqliteMemoryStore):
     rid = store.remember(MemoryRecord(scope='app', category='other', title='T', content='c'))
     store.touch(rid)
     store.touch(rid)
-    assert store.get(rid).use_count == 2
+    rec = store.get(rid)
+    assert rec is not None
+    assert rec.use_count == 2
 
 
-def test_manager_recall_auto_touches(mgr, store):
+def test_manager_recall_auto_touches(mgr: MemoryManager, store: SqliteMemoryStore):
     """MemoryManager.recall 默认对命中行累加 use_count。"""
     _seed(store)
     mgr.recall('hutool', scope='app')
@@ -230,7 +233,7 @@ def test_manager_recall_auto_touches(mgr, store):
 
 # region ======== 持久化（SqliteMemoryStore 的核心价值）======
 
-def test_persistence_across_instances(store_path):
+def test_persistence_across_instances(store_path: str):
     """新实例打开同一文件，应读到之前写入的数据——这才是「记忆」而非「内存」。"""
     s1 = SqliteMemoryStore(store_path)
     s1.init_store()
@@ -250,34 +253,36 @@ def test_persistence_across_instances(store_path):
 
 # region ======== 所有权与角色隔离（owner / shared_mode）======
 
-def test_remember_stamps_owner_normal(store_path):
+def test_remember_stamps_owner_normal(store_path: str):
     """正常角色 remember 盖当前 owner 与 owner_group。"""
     s = SqliteMemoryStore(store_path, owner='kahle', owner_group='backend')
     s.init_store()
     rid = s.remember(MemoryRecord(scope='app', category='other', title='T', content='c'))
     rec = s.get(rid)
+    assert rec is not None
     assert rec.owner == 'kahle'
     assert rec.owner_group == 'backend'
 
 
-def test_remember_shared_mode_stamps_null_owner(store_path):
+def test_remember_shared_mode_stamps_null_owner(store_path: str):
     """共享角色 remember：owner 置空（→ 共享记忆），owner_group 仍盖当前组。"""
     s = SqliteMemoryStore(store_path, owner='kahle', owner_group='backend')
     s.init_store()
     rid = s.remember(MemoryRecord(scope='app', category='other', title='T', content='c'),
                      shared_mode=True)
     rec = s.get(rid, shared_mode=True)
+    assert rec is not None
     assert rec.owner is None
     assert rec.owner_group == 'backend'
 
 
-def test_normal_role_sees_own_plus_shared(store_path):
+def test_normal_role_sees_own_plus_shared(store_path: str):
     """正常角色：读可见自己的 + 共享；看不见别人的个人。"""
     alice = SqliteMemoryStore(store_path, owner='alice', owner_group='team-a')
     alice.init_store()
     a_own = alice.remember(MemoryRecord(scope='app', category='other', title='alice私', content='x'))
-    shared = alice.remember(MemoryRecord(scope='app', category='other', title='共享项', content='x'),
-                            shared_mode=True)
+    _shared = alice.remember(MemoryRecord(scope='app', category='other', title='共享项', content='x'),
+                             shared_mode=True)
     # bob 建立自己的私人记忆
     bob = SqliteMemoryStore(store_path, owner='bob', owner_group='team-a')
     bob_own = bob.remember(MemoryRecord(scope='app', category='other', title='bob私', content='x'))
@@ -292,7 +297,7 @@ def test_normal_role_sees_own_plus_shared(store_path):
     assert alice.get(bob_own) is None  # 看不见别人的
 
 
-def test_normal_role_cannot_modify_shared(store_path):
+def test_normal_role_cannot_modify_shared(store_path: str):
     """正常角色可改自己的，但改不了共享的（须切共享角色）。"""
     s = SqliteMemoryStore(store_path, owner='alice', owner_group='g')
     s.init_store()
@@ -304,7 +309,7 @@ def test_normal_role_cannot_modify_shared(store_path):
     assert s.forget(shared) is False                         # 也删不了
 
 
-def test_shared_role_can_modify_shared_only(store_path):
+def test_shared_role_can_modify_shared_only(store_path: str):
     """共享角色：可改/删共享，但看不见、动不了别人的个人。"""
     alice = SqliteMemoryStore(store_path, owner='alice', owner_group='g')
     alice.init_store()
@@ -322,7 +327,7 @@ def test_shared_role_can_modify_shared_only(store_path):
     assert all(r['owner'] is None for r in rows)
 
 
-def test_cross_user_cannot_modify_others_personal(store_path):
+def test_cross_user_cannot_modify_others_personal(store_path: str):
     """bob 改不了 alice 的个人记忆（owner 不匹配）。"""
     alice = SqliteMemoryStore(store_path, owner='alice', owner_group='g')
     alice.init_store()
@@ -337,7 +342,7 @@ def test_cross_user_cannot_modify_others_personal(store_path):
     assert bob.update(a_own, {'content': '篡改'}, shared_mode=True) is False
 
 
-def test_no_identity_behaves_as_shared(store_path):
+def test_no_identity_behaves_as_shared(store_path: str):
     """无身份(owner=None)：读写仅共享域——单用户 sqlite 全是共享 = 全可读写。"""
     s = SqliteMemoryStore(store_path)  # 无 owner
     s.init_store()
@@ -348,7 +353,7 @@ def test_no_identity_behaves_as_shared(store_path):
     assert s.forget(rid) is True
 
 
-def test_no_identity_cannot_touch_others_personal(store_path):
+def test_no_identity_cannot_touch_others_personal(store_path: str):
     """无身份调用者改不了别人(owner=alice)的个人数据（owner IS NULL 匹配不上）。"""
     alice = SqliteMemoryStore(store_path, owner='alice', owner_group='g')
     alice.init_store()
@@ -364,43 +369,47 @@ def test_no_identity_cannot_touch_others_personal(store_path):
 
 # region ======== machine / agent_name 盖章 ========
 
-def test_remember_stamps_machine_and_agent(store_path):
+def test_remember_stamps_machine_and_agent(store_path: str):
     """remember 自动盖 machine/agent_name 章（构造时绑定）。"""
     s = SqliteMemoryStore(store_path, owner='alice', machine='pc-a', agent_name='opencode')
     s.init_store()
     rid = s.remember(MemoryRecord(scope='app', category='other', title='T', content='c'))
     rec = s.get(rid)
+    assert rec is not None
     assert rec.machine == 'pc-a'
     assert rec.agent_name == 'opencode'
 
 
-def test_remember_keeps_explicit_machine_agent(store_path):
+def test_remember_keeps_explicit_machine_agent(store_path: str):
     """record 显式给 machine/agent_name 时保留之，不被构造绑定值覆盖。"""
     s = SqliteMemoryStore(store_path, owner='alice', machine='pc-a', agent_name='opencode')
     s.init_store()
     rid = s.remember(MemoryRecord(scope='app', category='other', title='T', content='c',
                                   machine='pc-b', agent_name='codex'))
     rec = s.get(rid)
+    assert rec is not None
     assert rec.machine == 'pc-b'
     assert rec.agent_name == 'codex'
 
 
-def test_remember_no_machine_no_agent(store_path):
+def test_remember_no_machine_no_agent(store_path: str):
     """未绑定 machine/agent_name 时，盖章为 None。"""
     s = SqliteMemoryStore(store_path)
     s.init_store()
     rid = s.remember(MemoryRecord(scope='app', category='other', title='T', content='c'))
     rec = s.get(rid)
+    assert rec is not None
     assert rec.machine is None
     assert rec.agent_name is None
 
 
-def test_remember_strips_blank_machine(store_path):
+def test_remember_strips_blank_machine(store_path: str):
     """纯空白 machine/agent_name 归一为 None（避免 ' ' 残留）。"""
     s = SqliteMemoryStore(store_path, machine='   ', agent_name='')
     s.init_store()
     rid = s.remember(MemoryRecord(scope='app', category='other', title='T', content='c'))
     rec = s.get(rid)
+    assert rec is not None
     assert rec.machine is None
     assert rec.agent_name is None
 
@@ -409,7 +418,7 @@ def test_remember_strips_blank_machine(store_path):
 
 # region ======== find_by_scope_title 去重三态（machine_bound）======
 
-def test_dedup_machine_bound_isolates_by_machine(store_path):
+def test_dedup_machine_bound_isolates_by_machine(store_path: str):
     """machine_bound=True：同 scope+title 跨 machine 不判重（路径类语义）。"""
     a = SqliteMemoryStore(store_path, owner='alice', machine='pc-a')
     a.init_store()
@@ -419,7 +428,7 @@ def test_dedup_machine_bound_isolates_by_machine(store_path):
     assert b.find_by_scope_title('app', '项目根', machine_bound=True) == []
 
 
-def test_dedup_machine_bound_matches_same_machine(store_path):
+def test_dedup_machine_bound_matches_same_machine(store_path: str):
     """machine_bound=True：同 machine 下同 scope+title 判重。"""
     a = SqliteMemoryStore(store_path, owner='alice', machine='pc-a')
     a.init_store()
@@ -428,7 +437,7 @@ def test_dedup_machine_bound_matches_same_machine(store_path):
     assert len(dups) == 1
 
 
-def test_dedup_global_shared_across_machines(store_path):
+def test_dedup_global_shared_across_machines(store_path: str):
     """machine_bound=False（默认）：同 scope+title 跨 machine 判重（通用知识语义）。"""
     a = SqliteMemoryStore(store_path, owner='alice', machine='pc-a')
     a.init_store()
@@ -440,7 +449,7 @@ def test_dedup_global_shared_across_machines(store_path):
     assert dups[0].machine == 'pc-a'
 
 
-def test_dedup_machine_bound_falls_back_when_no_machine(store_path):
+def test_dedup_machine_bound_falls_back_when_no_machine(store_path: str):
     """machine_bound=True 但当前 store 未绑定 machine：退化为全局判重。"""
     a = SqliteMemoryStore(store_path, owner='alice')  # 无 machine
     a.init_store()
@@ -453,7 +462,7 @@ def test_dedup_machine_bound_falls_back_when_no_machine(store_path):
 
 # region ======== 老库迁移（_migrate 补列）======
 
-def test_migrate_adds_columns_to_legacy_table(store_path):
+def test_migrate_adds_columns_to_legacy_table(store_path: str):
     """建一个老式（无 machine/agent_name 列）的表，init_store 应补齐列且不丢老数据。"""
     import sqlite3
     conn = sqlite3.connect(store_path)
@@ -483,10 +492,12 @@ def test_migrate_adds_columns_to_legacy_table(store_path):
     # 新写入正常（含 machine 盖章）
     s2 = SqliteMemoryStore(store_path, machine='pc-a', agent_name='opencode')
     rid = s2.remember(MemoryRecord(scope='app', category='other', title='new', content='y'))
-    assert s2.get(rid).machine == 'pc-a'
+    rec2 = s2.get(rid)
+    assert rec2 is not None
+    assert rec2.machine == 'pc-a'
 
 
-def test_migrate_is_idempotent(store_path):
+def test_migrate_is_idempotent(store_path: str):
     """多次 init_store 不重复加列、不报错（ALTER COLUMN 已存在会抛错，幂等性靠检测列名）。"""
     s = SqliteMemoryStore(store_path)
     s.init_store()

@@ -17,7 +17,7 @@ AI Agent 记忆能力抽象层。
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from pykunlun.util import logutil
 
@@ -221,10 +221,9 @@ class MemoryStore(ABC):
     避免策略漂移。详见这两个函数的说明。
     """
 
-    @property
-    @abstractmethod
-    def backend_type(self) -> str:
-        """本实现的后端类型标识（如 'sqlite'、'rdb'），对标 RdbClient.db_type。"""
+    #: 本实现的后端类型标识（如 'sqlite'、'rdb'），对标 RdbClient.db_type。
+    #: 基类以 ClassVar 声明（无默认值），子类以类级常量提供。
+    backend_type: ClassVar[str]
 
     @property
     def owner(self) -> str | None:
@@ -379,7 +378,7 @@ class MemoryManager:
     """
 
     #: 默认实例名称（省略 name 时使用）
-    DEFAULT_NAME = 'default'
+    DEFAULT_NAME: str = 'default'
 
     def __init__(self) -> None:
         self._stores: dict[str, MemoryStore] = {}

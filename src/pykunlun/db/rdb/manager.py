@@ -79,7 +79,7 @@ class RdbManager:
     # region ======== 构造 ========
 
     #: 默认实例名称
-    DEFAULT_NAME = "default"
+    DEFAULT_NAME: str = "default"
 
     def __init__(self, config_loader: Callable[['RdbManager', str], None] | None = None) -> None:
         """
@@ -432,7 +432,7 @@ class RdbManager:
 
     # region ======== 执行便捷方法（透传 RdbClient） ========
 
-    def get_connection(self, name: str | None = None):
+    def get_connection(self, name: str | None = None) -> Any:
         """
         打开并返回指定实例的数据库连接（透传 :meth:`RdbClient.get_connection`）。
 
@@ -456,8 +456,8 @@ class RdbManager:
         return client.get_connection()
 
     def query(self, sql: str, params: tuple[Any, ...] | None = None,
-              converters: dict[type, Callable[[Any], Any]] | None = None,
-              name: str | None = None) -> list[dict]:
+              converters: dict[type[Any], Callable[[Any], Any]] | None = None,
+              name: str | None = None) -> list[dict[str, Any]]:
         """
         执行查询（透传 :meth:`RdbClient.query`）。
 

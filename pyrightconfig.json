@@ -1,0 +1,12 @@
+{
+  "typeCheckingMode": "strict",
+  "reportUnnecessaryIsInstance": "none",
+  "executionEnvironments": [
+    {
+      // 测试属白盒场景，访问被测模块私有成员（_query、_format_help_hint 等）是有意为之，
+      // 对 tests 目录单独放行 reportPrivateUsage；src 保持 strict 默认。
+      "root": "tests",
+      "reportPrivateUsage": "none"
+    }
+  ]
+}

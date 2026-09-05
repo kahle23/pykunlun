@@ -147,8 +147,8 @@ class CommandPasswordMasker(Masker[list[str]]):
         """
         placeholder = self.mask_placeholder * 3
         parts = list(cmd)
-        flags = (self._tool_flags.get(self._normalize_tool_name(parts[0]), frozenset())
-                 if parts else frozenset())
+        flags: frozenset[str] = (self._tool_flags.get(self._normalize_tool_name(parts[0]), frozenset())
+                                 if parts else frozenset())
 
         masked: list[str] = []
         for part in parts:

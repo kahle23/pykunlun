@@ -6,7 +6,9 @@ SQLite 驱动客户端（基于 Python 标准库 ``sqlite3``，无第三方依�
 
 import os
 import sqlite3
-import urllib.request
+from pathlib import Path
+from types import ModuleType
+from typing import Any, ClassVar
 
 from pykunlun.util import logutil
 
@@ -23,15 +25,15 @@ class SqliteClient(RdbClient):
     （``':memory:'`` 表示内存库），无需 host/port/username/password。
     """
 
-    db_type = 'sqlite'
+    db_type: ClassVar[str] = 'sqlite'
 
-    def get_driver(self):
+    def get_driver(self) -> ModuleType:
         """
         返回标准库 sqlite3 模块。
         """
         return sqlite3
 
-    def build_connect_kwargs(self) -> dict:
+    def build_connect_kwargs(self) -> dict[str, Any]:
         """
         构建 sqlite3 连接参数（基于绑定的 :attr:`cfg`）。
 
@@ -52,8 +54,9 @@ class SqliteClient(RdbClient):
         if db is None:
             raise ValueError("SQLite database 路径未配置")
         if self.cfg.read_only and db != ':memory:':
-            abs_path = os.path.abspath(db)
-            uri = 'file:' + urllib.request.pathname2url(abs_path) + '?mode=ro'
+            # Path.as_uri() 产出 file:/// 起头的合法 URI（含百分号编码，处理空格/中文/盘符），
+            # 与 sqlite3 URI 连接兼容；pathname2url 因 nturl2path 3.14 起弃用而不再使用。
+            uri = Path(os.path.abspath(db)).as_uri() + '?mode=ro'
             return {'database': uri, 'uri': True}
         return {'database': db}
 
@@ -70,7 +73,7 @@ class SqliteClient(RdbClient):
         from pykunlun.util import validation
         validation.check_required_fields_not_empty(self.cfg, ['database'], '数据库配置')
 
-    def is_connection_open(self, connection) -> bool:
+    def is_connection_open(self, connection: Any) -> bool:
         """
         判断 sqlite3 连接是否可用。
 

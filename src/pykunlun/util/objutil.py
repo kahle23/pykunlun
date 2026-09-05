@@ -5,7 +5,7 @@
 可能是 dict 也可能是对象的场景。
 """
 
-from typing import Any
+from typing import Any, cast
 
 
 def get_attr(obj: Any, attr: str, default: Any = None) -> Any:
@@ -25,7 +25,7 @@ def get_attr(obj: Any, attr: str, default: Any = None) -> Any:
         return default
     # 处理字典
     if isinstance(obj, dict):
-        return obj.get(attr, default)
+        return cast(Any, obj).get(attr, default)
     # 处理对象
     return getattr(obj, attr, default)
 

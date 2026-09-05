@@ -146,7 +146,7 @@ class Masker(ABC, Generic[T]):
         return value[:keep_first] + self.mask_placeholder * middle_len + value[end:]
 
     @abstractmethod
-    def support(self, value: T) -> bool:
+    def support(self, value: T, /) -> bool:
         """
         判断本策略是否适用于 *value*（类型/内容探测）。
 
@@ -164,7 +164,7 @@ class Masker(ABC, Generic[T]):
         raise NotImplementedError
 
     @abstractmethod
-    def apply(self, value: T) -> T:
+    def apply(self, value: T, /) -> T:
         """
         对 *value* 执行脱敏并返回结果（入参与出参同类型 ``T``）。
 

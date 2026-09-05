@@ -8,6 +8,7 @@ SQLite 备份/恢复服务（基于 Python 标准库 ``sqlite3``，无第三方�
 import gzip
 import os
 import sqlite3
+from typing import ClassVar
 
 from pykunlun.util import logutil
 
@@ -26,9 +27,9 @@ class SqliteBackupService(RdbBackupService):
     :meth:`RdbBackupService.restore`。
     """
 
-    db_type = 'sqlite'
-    tool_name = 'sqlite3'
-    install_hint = 'Python 内置模块，无需安装'
+    db_type: ClassVar[str] = 'sqlite'
+    tool_name: ClassVar[str] = 'sqlite3'
+    install_hint: ClassVar[str] = 'Python 内置模块，无需安装'
 
     def is_available(self) -> bool:
         """
@@ -118,7 +119,7 @@ class SqliteBackupService(RdbBackupService):
             log.warning(f"SQLite 恢复失败: {e}")
             return RdbBackupResult(False, error_message=f"SQLite 恢复失败: {e}")
 
-    def _dump_to_file(self, conn, output_path: str,
+    def _dump_to_file(self, conn: sqlite3.Connection, output_path: str,
                       tables: list[str] | None = None, schema_only: bool = False) -> None:
         """
         将数据库内容导出到 SQL 文件。

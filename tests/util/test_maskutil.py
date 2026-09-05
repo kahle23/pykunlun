@@ -29,8 +29,8 @@ class TestPhoneMasker:
 
     def test_support_rejects_non_str(self):
         """非字符串值（如命令列表）不应被字符串策略认领。"""
-        assert PhoneMasker().support(['mysqldump', '-psecret']) is False
-        assert PhoneMasker().support(13812345678) is False
+        assert PhoneMasker().support(['mysqldump', '-psecret']) is False  # pyright: ignore[reportArgumentType]
+        assert PhoneMasker().support(13812345678) is False  # pyright: ignore[reportArgumentType]
 
     def test_apply(self):
         assert PhoneMasker().apply('13812345678') == '138****5678'
@@ -103,8 +103,8 @@ class TestUniversalMasker:
 
     def test_support_rejects_non_str(self):
         """UniversalMasker 只兜底字符串，非字符串让出给其他策略或原样返回。"""
-        assert UniversalMasker(name='all').support(['a', 'b']) is False
-        assert UniversalMasker(name='all').support(123) is False
+        assert UniversalMasker(name='all').support(['a', 'b']) is False  # pyright: ignore[reportArgumentType]
+        assert UniversalMasker(name='all').support(123) is False  # pyright: ignore[reportArgumentType]
 
     def test_apply(self):
         assert UniversalMasker(name='all').apply('secret') == '***'
@@ -201,6 +201,7 @@ class TestForwardingFacades:
         """取已注册命令策略实例，追加紧凑密码短标志后生效。"""
         tool = 'test-forward-cli'
         m = maskutil.get_masker('cmd_password')
+        assert isinstance(m, CommandPasswordMasker)
         try:
             m.register_flag(tool, {'-W'})
             assert maskutil.mask([tool, '-Wsecret']) == [tool, '-W***']
@@ -248,9 +249,9 @@ class TestCommandPasswordMasker:
         assert CommandPasswordMasker().support(['ls', '-l']) is False
 
     def test_support_rejects_non_list(self):
-        assert CommandPasswordMasker().support('mysqldump -psecret') is False
-        assert CommandPasswordMasker().support(123) is False
-        assert CommandPasswordMasker().support({'k': 'v'}) is False
+        assert CommandPasswordMasker().support('mysqldump -psecret') is False  # pyright: ignore[reportArgumentType]
+        assert CommandPasswordMasker().support(123) is False  # pyright: ignore[reportArgumentType]
+        assert CommandPasswordMasker().support({'k': 'v'}) is False  # pyright: ignore[reportArgumentType]
 
     def test_apply_default_placeholder(self):
         assert CommandPasswordMasker().apply(['t', '--password=x']) == ['t', '--password=***']
@@ -355,9 +356,9 @@ class TestEnvMasker:
         assert EnvMasker().support({'FOO': 'bar'}) is False
 
     def test_support_rejects_non_dict(self):
-        assert EnvMasker().support('PGPASSWORD=pw') is False
-        assert EnvMasker().support(['PGPASSWORD']) is False
-        assert EnvMasker().support(123) is False
+        assert EnvMasker().support('PGPASSWORD=pw') is False  # pyright: ignore[reportArgumentType]
+        assert EnvMasker().support(['PGPASSWORD']) is False  # pyright: ignore[reportArgumentType]
+        assert EnvMasker().support(123) is False  # pyright: ignore[reportArgumentType]
 
     def test_apply_default_keys(self):
         assert EnvMasker().apply({'PGPASSWORD': 'pw', 'FOO': 'bar'}) \

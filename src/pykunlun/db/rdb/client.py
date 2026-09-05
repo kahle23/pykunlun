@@ -8,7 +8,8 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any
+from types import ModuleType
+from typing import Any, ClassVar, cast
 
 from pykunlun.util import logutil, validation
 
@@ -99,9 +100,9 @@ class RdbClient(ABC):
         """
         拦截实例属性赋值，保护 :attr:`db_type` 与 :attr:`cfg` 不被运行时篡改。
 
-        - ``db_type``：基类虽把它声明为抽象只读 property，但子类为满足抽象约束会用类级常量
-          ``db_type = 'mysql'`` 覆盖——该常量是普通字符串（非 data descriptor），会遮蔽基类 property，
-          使 property 的只读保护失效，``instance.db_type = x`` 将悄悄创建实例级遮蔽。
+        - ``db_type``：基类以 ClassVar 声明（无默认值），但子类为满足约束会用类级常量
+          ``db_type = 'mysql'`` 覆盖——该常量是普通字符串（非 data descriptor），
+          ``instance.db_type = x`` 将悄悄创建实例级遮蔽。
           本方法显式抛 :class:`AttributeError` 堵住此缺口。
         - ``cfg``：允许构造时首次赋值（由 :meth:`__init__` 触发），构造完成后禁止替换。
           绑定的 cfg 已经过 :meth:`_validate_and_prepare_cfg` 校验与默认值补全，
@@ -159,8 +160,8 @@ class RdbClient(ABC):
         if not cfg.validation_query:
             cfg.validation_query = 'SELECT 1'
 
-    def _normalize_rows(self, cursor, rows: list,
-                        converters: dict[type, Callable[[Any], Any]] | None = None) -> list[dict]:
+    def _normalize_rows(self, cursor: Any, rows: list[Any],
+                        converters: dict[type[Any], Callable[[Any], Any]] | None = None) -> list[dict[str, Any]]:
         """
         将查询结果行整形为字典列表。
 
@@ -185,17 +186,19 @@ class RdbClient(ABC):
             return []
 
         # 值转换器：按类型匹配转换函数，保持原样
-        def _convert(d: dict) -> dict:
+        def _convert(d: dict[str, Any]) -> dict[str, Any]:
             if not converters:
                 return d
-            result: dict = {}
+            result: dict[str, Any] = {}
             for k, v in d.items():
                 # None 值不参与转换（保持原样）
                 if v is None:
                     result[k] = v
                     continue
                 # 精确类型优先；未命中则沿 MRO 回退查父类（兼容驱动返回的子类型实例）
-                fn = converters.get(type(v))
+                # （cast(Any) 消类型参差：Any 值的 type() 推断 type[Unknown]，Pyright 口径需对齐键类型）
+                vt = cast(Any, type(v))
+                fn = converters.get(vt)
                 if fn is None:
                     for base in type(v).__mro__[1:]:
                         fn = converters.get(base)
@@ -212,7 +215,7 @@ class RdbClient(ABC):
         cols = [desc[0] for desc in cursor.description] if cursor.description else None
         if cols is None:
             log.warning("无法获取列名描述，将使用位置索引 field_0, field_1...")
-        result = []
+        result: list[dict[str, Any]] = []
         for row in rows:
             d = dict(zip(cols, row)) if cols else {f'field_{i}': v for i, v in enumerate(row)}
             result.append(_convert(d))
@@ -222,20 +225,15 @@ class RdbClient(ABC):
 
     # region ======== 驱动钩子与执行接口 ========
 
-    @property
-    @abstractmethod
-    def db_type(self) -> str:
-        """
-        本实现类代表的数据库类型标识（如 ``mysql``、``postgresql``、``sqlite``）。
-
-        由各实现类以**类级常量**形式硬编码提供，标识"本类是哪种数据库的驱动"。
-        基类声明为抽象只读 property，强制子类在类级覆盖；
-        其运行时不可修改性由 :meth:`__setattr__` 显式拦截保证（详见该方法的说明）。
-        """
-        pass
+    #: 本实现类代表的数据库类型标识（如 ``mysql``、``postgresql``、``sqlite``）。
+    #:
+    #: 由各实现类以**类级常量**形式硬编码提供，标识"本类是哪种数据库的驱动"。
+    #: 基类以 ClassVar 声明（无默认值）强制子类在类级覆盖；
+    #: 其运行时不可修改性由 :meth:`__setattr__` 显式拦截保证（详见该方法的说明）。
+    db_type: ClassVar[str]
 
     @abstractmethod
-    def get_driver(self):
+    def get_driver(self) -> ModuleType:
         """
         获取数据库驱动模块。
 
@@ -261,7 +259,7 @@ class RdbClient(ABC):
         """
         pass
 
-    def is_connection_open(self, connection) -> bool:
+    def is_connection_open(self, connection: Any) -> bool:
         """
         判断连接是否处于打开状态。
 
@@ -280,7 +278,7 @@ class RdbClient(ABC):
             return not bool(connection.closed)
         return True
 
-    def get_connection(self):
+    def get_connection(self) -> Any:
         """
         打开并返回一个新的数据库连接。
 
@@ -299,7 +297,7 @@ class RdbClient(ABC):
         return driver.connect(**self.build_connect_kwargs())
 
     def query(self, sql: str, params: tuple[Any, ...] | None = None,
-              converters: dict[type, Callable[[Any], Any]] | None = None) -> list[dict]:
+              converters: dict[type[Any], Callable[[Any], Any]] | None = None) -> list[dict[str, Any]]:
         """
         执行查询并返回结果（自动管理连接生命周期）。
 

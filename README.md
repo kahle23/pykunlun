@@ -52,8 +52,12 @@ python -m pip install ".[dev]"
 # 代码风格检查
 python -m ruff check src/
 
-# 类型检查
+# 类型检查（mypy strict，配置在 pyproject.toml [tool.mypy]）
 python -m mypy src/
+
+# 类型检查（Pyright strict，配置在 pyrightconfig.json；
+# 全局安装：npm install -g pyright，国内镜像加 --registry=https://registry.npmmirror.com）
+pyright src/
 
 # 运行测试
 python -m pytest tests/

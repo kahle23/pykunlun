@@ -37,8 +37,9 @@ class _StubMasker(Masker[Any]):
 
 # 用于验证占位符配置的桩：apply 走继承到的私有原语（str 专用）。
 class _PlaceholderMasker(Masker[str]):
-    def __init__(self, name: str = 'placeholder', priority: int = 0, **kwargs):
-        super().__init__(name, priority, **kwargs)
+    def __init__(self, name: str = 'placeholder', priority: int = 0,
+                 mask_placeholder: str | None = None) -> None:
+        super().__init__(name, priority, mask_placeholder)
 
     def support(self, value: str) -> bool:
         return True
@@ -48,8 +49,9 @@ class _PlaceholderMasker(Masker[str]):
 
 
 class _AlwaysHi(Masker[str]):
-    def __init__(self, name: str = 'hi', priority: int = 100, **kwargs):
-        super().__init__(name, priority, **kwargs)
+    def __init__(self, name: str = 'hi', priority: int = 100,
+                 mask_placeholder: str | None = None) -> None:
+        super().__init__(name, priority, mask_placeholder)
 
     def support(self, value: str) -> bool:
         return value.startswith('hi')
@@ -312,7 +314,7 @@ class TestResolveName:
         """_resolve_name 为实例方法，子类可覆写自定义名称规则。"""
 
         class _CustomManager(MaskManager):
-            def _resolve_name(self, name):
+            def _resolve_name(self, name: str) -> str:
                 return super()._resolve_name(name).upper()
 
         mgr = _CustomManager()
