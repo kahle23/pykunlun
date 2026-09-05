@@ -123,7 +123,7 @@ class HelpCommand(Command):
             f"用法: {command.usage}"
         )
 
-    def full_help_text(self, commands: dict) -> str:
+    def full_help_text(self, commands: dict[str, Command]) -> str:
         """
         生成所有命令的帮助文本。
 
@@ -134,7 +134,7 @@ class HelpCommand(Command):
             str: 生成的帮助文本。
         """
         # 构建命令列表
-        command_lines = []
+        command_lines: list[str] = []
         for cmd in commands.values():
             command_lines.append(f"    {cmd.name:<12} {cmd.description}")
         commands_text = "\n".join(command_lines)

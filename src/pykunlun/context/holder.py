@@ -1,46 +1,20 @@
 """
-上下文模块。
+上下文持有器模块。
 
-提供上下文抽象与「当前值」容器的通用原语：
+提供 :class:`ContextHolder`：基于 ``contextvars`` 的泛型「当前值」容器，封装
+get/set/reset/using，按线程/asyncio Task 隔离。
 
-  - :class:`Context`：上下文抽象基类（约定通用键值存储）。
-  - :class:`ContextHolder`：基于 ``contextvars`` 的泛型「当前值」容器，封装
-    get/set/reset/using，按线程/asyncio Task 隔离。
-
-本模块只提供通用原语，不含任何 CLI 专有内容，也不持有「当前上下文」全局态——
-具体上下文形态（如命令行的 :class:`~pykunlun.cli.CliContext`）及其对应的
-``ContextHolder`` 实例由上层模块（如 :mod:`pykunlun.cli`）按需定义。
+本模块不持有「当前上下文」全局态——上层按需 new 出自己的 holder，例如
+:mod:`pykunlun.cli` 用它承载「当前 :class:`~pykunlun.cli.CliContext`」。
 """
 from __future__ import annotations
 
 import contextlib
 import contextvars
-from abc import ABC, abstractmethod
-from collections.abc import Generator, MutableMapping
-from typing import Any, Generic, TypeVar
+from collections.abc import Generator
+from typing import Generic, TypeVar
 
 T = TypeVar("T")
-
-
-class Context(ABC):
-    """
-    上下文抽象基类。
-
-    具体形态（如命令行上下文 ``CliContext``）由上层模块继承提供。基类只约定一个
-    通用键值存储，供跨切面状态挂载。
-    """
-
-    @abstractmethod
-    def get_storage(self) -> MutableMapping[str, Any]:
-        """
-        获取通用键值存储。
-
-        供跨切面状态挂载（如结果分隔符、输出编码等），具体键由上层约定。
-
-        Returns:
-            存储映射（MutableMapping）。
-        """
-        ...
 
 
 class ContextHolder(Generic[T]):
