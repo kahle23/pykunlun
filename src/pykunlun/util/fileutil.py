@@ -1,22 +1,51 @@
 """
-文件操作工具模块，提供目录清理与文件读取相关的工具函数。
+文件操作工具模块，提供目录创建/清理、文件读取与文件名生成等带副作用的文件操作。
 
-包含两类能力：
+包含四类能力：
+- 目录创建：创建入参路径的父目录（含中间目录，幂等）。
 - 目录清理：按名称或后缀匹配删除目录，可选递归，常用于清理构建产物（如 __pycache__、.egg-info）。
 - 文件读取：自动判断绝对/相对路径读取文件，返回字节流或字符串。
+- 文件名生成：生成带时间戳的文件名。
 
-路径解析能力（resolve_relative）见 :mod:`pykunlun.util.pathutil`。
+纯路径转换（不触碰文件系统）见 :mod:`pykunlun.util.pathutil`；
+本模块与之一一互补，全部会产生真实的文件系统副作用。
 """
 
 import os
 import shutil
 from datetime import datetime
+from pathlib import Path
 from typing import IO
 
 from pykunlun.util import logutil, pathutil
 from pykunlun.util.pathutil import ResolveType
 
 log = logutil.getLogger(__name__)
+
+
+# region ======== 目录创建 ========
+
+def make_parent_dirs(path: str | Path) -> None:
+    """
+    创建入参路径的父目录（就地创建，含中间目录，幂等）。
+
+    不区分 ``path`` 是文件路径还是目录路径，一律创建其**父目录**，路径本身不创建：
+    传 ``a/b/c.txt`` 建 ``a/b``（写文件前腾地方），传 ``a/b`` 建 ``a``。
+    要保证目录**本身**存在，请直接用 :meth:`pathlib.Path.mkdir`
+    （``parents=True, exist_ok=True``）。
+    纯文件名（无目录部分）的父目录即当前目录，视为已存在，不做任何操作；
+    父目录已存在时静默通过（幂等，可放心在写文件前无条件调用）；
+    父路径被同名文件占据时抛 :class:`FileExistsError`，创建失败不静默。
+
+    Args:
+        path: 目标路径，文件或目录路径均可，``str`` 与 :class:`pathlib.Path` 皆可。
+    """
+    # pathlib 语义兜底：纯文件名的 parent 为 '.'，mkdir(exist_ok=True) 对已存在的 '.' 静默通过，
+    # 无需像 os.path 方案那样先 abspath/dirname 再判空
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+
+# endregion
 
 
 # region ======== 目录清理 ========

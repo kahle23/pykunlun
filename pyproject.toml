@@ -58,6 +58,7 @@ ignore = [
     "S110",    # try-except-pass：资源清理场景，静默是预期行为
     "BLE001",  # 盲异常：与 S110 重叠的工具库资源清理场景
     "DTZ005",  # datetime.now() 无 tz：工具库默认使用 naive datetime
+    "DTZ006",  # fromtimestamp() 无 tz：同上（naive datetime 为全项目约定）
     "DTZ007",  # strptime 无 %z：同上
     "DTZ001",  # datetime() 构造无 tz：同上，naive datetime 为全项目约定
     # PIE790：不必要的 pass 语句
