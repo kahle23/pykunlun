@@ -25,7 +25,6 @@ log = logutil.getLogger(__name__)
 
 
 # region ======== 记忆记录 ========
-
 #: update() 允许修改的字段白名单（除 id/计数/软删除标记/时间戳外的业务字段）
 UPDATABLE_FIELDS: frozenset[str] = frozenset({
     'scope', 'category', 'title', 'content', 'keywords',
@@ -57,7 +56,6 @@ _STOPWORDS: frozenset[str] = frozenset({
 
 
 # region ======== 查询分词 ========
-
 def tokenize_query(query: str) -> list[str]:
     r"""
     将查询文本拆分为关键词列表（用于 recall 的多关键词 OR+LIKE 检索）。
@@ -82,7 +80,6 @@ def tokenize_query(query: str) -> list[str]:
         if t and t not in _STOPWORDS:
             tokens.append(t)
     return tokens
-
 # endregion
 
 
@@ -131,7 +128,6 @@ def permission_clause(shared_mode: bool, owner: str | None, ph: str) -> tuple[st
     if shared_mode or owner is None:
         return f'(owner IS NULL OR owner = {ph})', ['']
     return f'owner = {ph}', [owner]
-
 # endregion
 
 
@@ -201,12 +197,10 @@ class MemoryRecord:
         import dataclasses
         names = {f.name for f in dataclasses.fields(cls)}
         return cls(**{k: v for k, v in d.items() if k in names})
-
 # endregion
 
 
 # region ======== 存储策略抽象基类 ========
-
 class MemoryStore(ABC):
     """
     记忆存储策略抽象基类。
@@ -349,12 +343,10 @@ class MemoryStore(ABC):
     @abstractmethod
     def count(self, include_deleted: bool = False, shared_mode: bool = False) -> int:
         """返回当前角色可见范围内的记录总数（默认排除软删除）。"""
-
 # endregion
 
 
 # region ======== 管理器 ========
-
 class MemoryManager:
     """
     记忆存储管理器。
@@ -425,7 +417,6 @@ class MemoryManager:
         return sorted(self._stores.keys())
 
     # region ======== 转发接口 ========
-
     def init_store(self, name: str | None = None) -> None:
         self.get_store(name).init_store()
 
@@ -505,7 +496,5 @@ class MemoryManager:
         shared_mode: bool = False,
     ) -> int:
         return self.get_store(name).count(include_deleted=include_deleted, shared_mode=shared_mode)
-
     # endregion
-
 # endregion

@@ -95,7 +95,6 @@ class PlanTaskManager:
 
     def setup(self, name: str | None = None) -> None:
         self.get_service(name).setup()
-
     # endregion
 
     # region ======== 任务 ========
@@ -128,7 +127,6 @@ class PlanTaskManager:
 
     def cancel(self, id: int, reason: str = "", name: str | None = None) -> bool:
         return self.get_service(name).cancel(id, reason=reason)
-
     # endregion
 
     # region ======== 步骤 ========
@@ -149,7 +147,6 @@ class PlanTaskManager:
 
     def retry_step(self, id: int, force: bool = False, name: str | None = None) -> bool:
         return self.get_service(name).retry_step(id, force=force)
-
     # endregion
 
     # region ======== 执行 ========
@@ -368,7 +365,6 @@ class PlanTaskManager:
                 + text[-output_tail_chars:]
             )
         return rc, text, timed_out
-
     # endregion
 
     # region ======== 恢复 ========
@@ -377,7 +373,6 @@ class PlanTaskManager:
 
     def verify_task(self, task_id: int, fix: bool = False, name: str | None = None) -> list[dict[str, Any]]:
         return self.get_service(name).verify_task(task_id, fix=fix)
-
     # endregion
 
     # region ======== 产物 / 事件 ========
@@ -411,5 +406,4 @@ class PlanTaskManager:
 
     def list_events(self, task_id: int, limit: int = 100, name: str | None = None) -> list[dict[str, Any]]:
         return self.get_service(name).list_events(task_id, limit=limit)
-
     # endregion

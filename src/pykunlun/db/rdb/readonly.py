@@ -58,7 +58,6 @@ class RdbReadOnlyClient(RdbClient):
     """
 
     # region ======== 类级常量与实例属性 ========
-
     #: 默认禁止的 SQL 首动词集合（DML 写 / DDL / DCL / 过程调用 / 数据加载）。
     #: 构造时未显式传入 ``forbidden_verbs`` 时采用此默认值。
     DEFAULT_FORBIDDEN_VERBS: frozenset[str] = frozenset({
@@ -77,11 +76,9 @@ class RdbReadOnlyClient(RdbClient):
 
     #: 当前实例生效的禁止动词集合（实例属性，构造时确定）。
     _forbidden_verbs: frozenset[str]
-
     # endregion
 
     # region ======== 构造与属性转发 ========
-
     def __init__(self, inner: RdbClient,
                  forbidden_verbs: Iterable[str] | None = None) -> None:
         """
@@ -119,11 +116,9 @@ class RdbReadOnlyClient(RdbClient):
         等已转发的钩子工作，行为与内层一致。
         """
         return getattr(self._inner, name)
-
     # endregion
 
     # region ======== SQL 动词解析与写拦截（内部工具） ========
-
     @classmethod
     def _extract_first_sql_verb(cls, sql: str) -> str:
         """
@@ -153,11 +148,9 @@ class RdbReadOnlyClient(RdbClient):
                 f"当前为只读客户端（read_only=True），禁止执行写操作："
                 f"{verb}（SQL: {sql.strip()[:80]!r}）"
             )
-
     # endregion
 
     # region ======== 透传：核心标识/配置 ========
-
     # db_type 不再显式定义：基类现为 ClassVar 裸声明（无值），实例访问经
     # __getattr__ 转发到内层客户端的 db_type，语义与原透传 property 等价，
     # 且不与基类的类级声明形态冲突。
@@ -169,11 +162,9 @@ class RdbReadOnlyClient(RdbClient):
     def build_connect_kwargs(self) -> dict[str, Any]:
         """透传内层客户端的连接参数（满足基类抽象方法）。"""
         return self._inner.build_connect_kwargs()
-
     # endregion
 
     # region ======== 拦截 + 转发：执行接口 ========
-
     def get_forbidden_verbs(self) -> frozenset[str]:
         """
         获取当前实例生效的禁止 SQL 首动词集合。
@@ -218,5 +209,4 @@ class RdbReadOnlyClient(RdbClient):
     def close(self) -> None:
         """转发至内层 :meth:`~RdbClient.close`，释放底层资源（如连接池）。"""
         self._inner.close()
-
     # endregion

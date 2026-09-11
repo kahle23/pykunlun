@@ -11,8 +11,8 @@ Python 解释器信息模块。
 import sys
 import sysconfig
 
-# region ======== Python 解释器 ========
 
+# region ======== Python 解释器 ========
 def get_python_executable() -> str:
     """
     获取当前 Python 解释器的可执行文件路径。
@@ -51,6 +51,4 @@ def get_python_bin_dir() -> str:
         Python 可执行文件目录路径。
     """
     return sysconfig.get_path("scripts")
-
-
 # endregion

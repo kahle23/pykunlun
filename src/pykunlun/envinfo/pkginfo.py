@@ -24,7 +24,6 @@ _PACKAGE_NAME = __name__.split('.')[0]
 
 
 # region ======== 自身 / 调用方包名识别 ========
-
 def get_own_top_package_name() -> str:
     """
     获取本库（pykunlun）的顶级包名。
@@ -93,13 +92,10 @@ def get_caller_top_package_name(skip_packages: list[str] | None = None) -> str:
                 fallback = str(top)
         frame = frame.f_back
     return fallback
-
-
 # endregion
 
 
 # region ======== 包名 ↔ 分发名转换 ========
-
 @cached(ttl=30 * 60, cacheable=lambda v: v is not None)
 def get_distribution_name(package_name: str) -> str | None:
     """
@@ -137,13 +133,10 @@ def get_distribution_name(package_name: str) -> str | None:
     top = str(package_name).split('.')[0]
     dists = packages_distributions().get(top)
     return dists[0] if dists else None
-
-
 # endregion
 
 
 # region ======== 版本查询 ========
-
 @cached(ttl=30 * 60)
 def get_package_version(name: str) -> str:
     """
@@ -185,6 +178,4 @@ def get_package_version(name: str) -> str:
         # 两种路径都失败：按"未安装"语义抛错，入参保持调用方原值以便定位
         raise PackageNotFoundError(name)
     return version(dist)
-
-
 # endregion

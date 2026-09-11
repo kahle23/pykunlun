@@ -65,7 +65,6 @@ class OssManager:
     """
 
     # region ======== 构造 ========
-
     #: 默认实例名称
     DEFAULT_NAME: ClassVar[str] = "default"
 
@@ -83,11 +82,9 @@ class OssManager:
         self._client_registry: dict[str, OssClient] = {}
         self._lock = threading.RLock()
         self._config_loader = config_loader
-
     # endregion
 
     # region ======== getter ========
-
     def get_config_loader(self) -> Callable[['OssManager', str], None] | None:
         """
         获取配置加载器。
@@ -96,11 +93,9 @@ class OssManager:
             配置加载器 callable，未设置时返回 None。
         """
         return self._config_loader
-
     # endregion
 
     # region ======== 类注册表（oss_type -> OssClient 子类） ========
-
     def _create_client_from_cfg(self, cfg: OssCfg) -> OssClient:
         """
         按 ``cfg.oss_type`` 从类注册表取出实现类并实例化（内部工具）。
@@ -166,10 +161,7 @@ class OssManager:
             return False
         key = oss_type.lower()
         with self._lock:
-            if key in self._class_registry:
-                del self._class_registry[key]
-                return True
-            return False
+            return self._class_registry.pop(key, None) is not None
 
     def get_client_class(self, oss_type: str) -> type[OssClient]:
         """
@@ -206,11 +198,9 @@ class OssManager:
         """
         with self._lock:
             return list(self._class_registry.keys())
-
     # endregion
 
     # region ======== 实例注册表（name -> OssClient 实例） ========
-
     def _resolve_name(self, name: str | None) -> str:
         """
         将名称解析为注册表键：为空时回落到 :attr:`DEFAULT_NAME`。
@@ -257,10 +247,7 @@ class OssManager:
         """
         key = self._resolve_name(name)
         with self._lock:
-            if key in self._client_registry:
-                del self._client_registry[key]
-                return True
-            return False
+            return self._client_registry.pop(key, None) is not None
 
     def get_client(self, name: str | None = None) -> OssClient:
         """
@@ -302,11 +289,9 @@ class OssManager:
         """
         with self._lock:
             return list(self._client_registry.keys())
-
     # endregion
 
     # region ======== 操作便捷方法（写）（透传 OssClient，附加 name 参数） ========
-
     def put_object(self, key: str, data: bytes | str, content_type: str | None = None,
                    metadata: dict[str, str] | None = None,
                    bucket: str | None = None, name: str | None = None) -> None:
@@ -378,11 +363,9 @@ class OssManager:
             name: 实例名称，省略时使用 :attr:`DEFAULT_NAME`。
         """
         self.get_client(name).upload_file(key, local_path, content_type, metadata, bucket)
-
     # endregion
 
     # region ======== 操作便捷方法（读）（透传 OssClient，附加 name 参数） ========
-
     def get_object(self, key: str, bucket: str | None = None,
                    name: str | None = None) -> bytes:
         """
@@ -500,11 +483,9 @@ class OssManager:
             name: 实例名称，省略时使用 :attr:`DEFAULT_NAME`。
         """
         return self.get_client(name).presigned_url(key, expires, bucket)
-
     # endregion
 
     # region ======== 生命周期（透传 OssClient.close） ========
-
     def close(self, name: str | None = None) -> None:
         """
         释放指定实例的底层资源（透传 :meth:`OssClient.close`）。
@@ -513,5 +494,4 @@ class OssManager:
             name: 实例名称，省略时使用 :attr:`DEFAULT_NAME`。
         """
         self.get_client(name).close()
-
     # endregion

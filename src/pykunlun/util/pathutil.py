@@ -22,8 +22,8 @@ from enum import IntEnum
 
 from pykunlun.envinfo import osenv, pkginfo
 
-# region ======== 解析类型 ========
 
+# region ======== 解析类型 ========
 class ResolveType(IntEnum):
     """路径解析类型枚举。
 
@@ -34,13 +34,10 @@ class ResolveType(IntEnum):
     CURRENT = 1   # 当前工作目录
     USER = 2      # 用户主目录
     APP_DATA = 3  # 应用数据目录
-
-
 # endregion
 
 
 # region ======== 基准目录解析 ========
-
 def _resolve_to_current(app_name: str | None) -> str:
     """基准目录：当前工作目录。"""
     return os.getcwd()
@@ -62,12 +59,10 @@ _BASE_RESOLVERS: dict[ResolveType, Callable[[str | None], str]] = {
     ResolveType.USER: _resolve_to_user,
     ResolveType.APP_DATA: _resolve_to_app_data,
 }
-
 # endregion
 
 
 # region ======== 路径解析 ========
-
 def resolve_relative(relative_path: str, resolve_type: int = ResolveType.CURRENT,
                      app_name: str | None = None) -> str:
     """
@@ -121,13 +116,10 @@ def resolve_relative(relative_path: str, resolve_type: int = ResolveType.CURRENT
     # 查表得到基准目录，拼接并规范化
     base_dir = _BASE_RESOLVERS[rtype](app_name)
     return os.path.normpath(os.path.join(base_dir, relative_path))
-
-
 # endregion
 
 
 # region ======== 字符串路径规范化与组合（纯字符串，不触碰文件系统） ========
-
 def normpath(path: str) -> str:
     """
     把路径规范化为标准形式，相对路径与绝对路径都支持（纯字符串操作，不触碰文件系统）。
@@ -282,6 +274,4 @@ def sub_path_by_index(path: str, from_index: int, to_index: int) -> str:
     if to_index < from_index:
         from_index, to_index = to_index, from_index
     return '/'.join(segments[from_index:to_index])
-
-
 # endregion

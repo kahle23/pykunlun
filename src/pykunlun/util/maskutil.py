@@ -28,8 +28,8 @@ from typing import Any
 
 from pykunlun.data.mask import Masker, MaskManager
 
-# region ======== 命令行密码脱敏策略 ========
 
+# region ======== 命令行密码脱敏策略 ========
 class CommandPasswordMasker(Masker[list[str]]):
     """
     命令行密码脱敏策略（``Masker[List[str]]``）。
@@ -164,12 +164,10 @@ class CommandPasswordMasker(Masker[list[str]]):
             else:
                 masked.append(part)
         return masked
-
 # endregion
 
 
 # region ======== 环境变量脱敏策略 ========
-
 class EnvMasker(Masker[dict[str, str]]):
     """
     环境变量脱敏策略（``Masker[Dict[str, str]]``）。
@@ -231,12 +229,10 @@ class EnvMasker(Masker[dict[str, str]]):
         placeholder = self.mask_placeholder * 3
         return {k: (placeholder if k.upper() in self._sensitive_upper else v)
                 for k, v in env.items()}
-
 # endregion
 
 
 # region ======== 默认管理器 + 脱敏门面 ========
-
 #: 默认脱敏管理器。``MaskManager()`` 已自动注册全部内置数据策略（phone/idcard/bankcard/
 #: email/name/default），此处追加命令行与环境变量两个工具型策略。
 mask_manager = MaskManager()
@@ -338,5 +334,4 @@ def mask_by_name(name: str, value: Any) -> Any:
         KeyError: 策略未注册时抛出。
     """
     return mask_manager.mask_by_name(name, value)
-
 # endregion

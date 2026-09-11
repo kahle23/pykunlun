@@ -158,7 +158,6 @@ class RdbBackupService(ABC):
         return shutil.which(self.tool_name) is not None
 
     # region ======== 备份 ========
-
     @abstractmethod
     def _build_dump_command(self, cfg: RdbCfg, tables: list[str] | None = None, schema_only: bool = False) -> list[str]:
         """
@@ -277,11 +276,9 @@ class RdbBackupService(ABC):
             cmdutil.log_command(cmd, env, log)
 
         return self._execute_dump(cmd, output_path, compress, env, timeout)
-
     # endregion
 
     # region ======== 恢复 ========
-
     @abstractmethod
     def _build_restore_command(self, cfg: RdbCfg) -> list[str]:
         """
@@ -364,5 +361,4 @@ class RdbBackupService(ABC):
             cmdutil.log_command(cmd, env, log)
 
         return self._execute_restore(cmd, input_path, env, timeout)
-
     # endregion

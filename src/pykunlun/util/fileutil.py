@@ -24,7 +24,6 @@ log = logutil.getLogger(__name__)
 
 
 # region ======== 目录创建 ========
-
 def make_parent_dirs(path: str | Path) -> None:
     """
     创建入参路径的父目录（就地创建，含中间目录，幂等）。
@@ -43,13 +42,10 @@ def make_parent_dirs(path: str | Path) -> None:
     # pathlib 语义兜底：纯文件名的 parent 为 '.'，mkdir(exist_ok=True) 对已存在的 '.' 静默通过，
     # 无需像 os.path 方案那样先 abspath/dirname 再判空
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-
-
 # endregion
 
 
 # region ======== 目录清理 ========
-
 def _safe_rmtree(path: str) -> bool:
     """
     删除目录，失败时仅告警、不抛出。
@@ -168,13 +164,10 @@ def remove_suffix_dirs(base_dir: str, suffix: str, recursive: bool = False) -> i
                     removed += 1
 
     return removed
-
-
 # endregion
 
 
 # region ======== 文件读取 ========
-
 def read_stream(file_path: str, *,
                 search_dirs: list[ResolveType] | None = None) -> IO[bytes]:
     """
@@ -265,13 +258,10 @@ def read_text(file_path: str, encoding: str = "utf-8", *,
     """
     with read_stream(file_path, search_dirs=search_dirs) as f:
         return f.read().decode(encoding)
-
-
 # endregion
 
 
 # region ======== 文件名生成 ========
-
 def timestamped_filename(name_parts: list[str], ext: str) -> str:
     """
     生成带时间戳的文件名：``{p1}_{p2}_..._{timestamp}.{ext}``。
@@ -293,5 +283,4 @@ def timestamped_filename(name_parts: list[str], ext: str) -> str:
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{'_'.join([*name_parts, timestamp])}.{ext}"
-
 # endregion

@@ -31,8 +31,8 @@ from pykunlun.oss import (
     OssManager,
 )
 
-# region ======== fixture ========
 
+# region ======== fixture ========
 @pytest.fixture
 def root_dir(tmp_path: Path) -> Iterator[str]:
     """提供一个临时存储根目录路径，测试结束自动清理。"""
@@ -45,12 +45,10 @@ def root_dir(tmp_path: Path) -> Iterator[str]:
 def client(root_dir: str) -> LocalOssClient:
     """默认客户端：默认桶 oss、无前缀。"""
     return LocalOssClient(OssCfg(oss_type='local', bucket='oss', storage_options={'base_dir': root_dir}))
-
 # endregion
 
 
 # region ======== 键处理（规范化经 pathutil，规则详见 tests/util/test_pathutil.py） ========
-
 class TestKeyHandling:
     """测试键经 pathutil 规范化后在本门面的端到端行为。"""
 
@@ -88,12 +86,10 @@ class TestKeyHandling:
         # 绝对路径下 .. 到根即止（POSIX: /.. == /），不会逃逸，落在根内
         client.put_object('/../evil.txt', b'x')
         assert client.get_object_text('evil.txt') == 'x'
-
 # endregion
 
 
 # region ======== 键预处理钩子 ========
-
 class TestKeyPrepareHook:
     """测试 _prepare_key 键预处理钩子（模板方法：默认实现 + 可覆写）。"""
 
@@ -119,12 +115,10 @@ class TestKeyPrepareHook:
         assert client.list_keys() == ['dir/file.txt']
         client.delete_object('Dir/File.TXT')
         assert client.list_keys() == []
-
 # endregion
 
 
 # region ======== LocalOssClient 基础读写 ========
-
 class TestPutAndGet:
     """测试 put/get 基础读写。"""
 
@@ -159,12 +153,10 @@ class TestPutAndGet:
         """反斜杠键与正斜杠键等价。"""
         client.put_object('x\\y.txt', 'ok')
         assert client.exists('x/y.txt')
-
 # endregion
 
 
 # region ======== 文件级操作 ========
-
 class TestFileOps:
     """测试 upload/download 文件级操作。"""
 
@@ -181,12 +173,10 @@ class TestFileOps:
     def test_download_missing_raises(self, client: LocalOssClient, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
             client.download_file('nope', str(tmp_path / 'out.bin'))
-
 # endregion
 
 
 # region ======== 流式底层钩子契约 ========
-
 class _CloseTrackingStream(io.RawIOBase):
     """最小包装流：透传读取，close 时回调记录（用于验证调用方关闭纪律）。"""
 
@@ -272,12 +262,10 @@ class TestStreamHooks:
         with pytest.raises(FileNotFoundError):
             client.download_file('nope', dst)
         assert not os.path.exists(os.path.dirname(dst))
-
 # endregion
 
 
 # region ======== 探测与列举 ========
-
 class TestListAndStat:
     """测试 exists/stat/list_objects/list_keys。"""
 
@@ -319,12 +307,10 @@ class TestListAndStat:
 
     def test_list_empty_root(self, client: LocalOssClient) -> None:
         assert client.list_keys() == []
-
 # endregion
 
 
 # region ======== 复制/移动/删除 ========
-
 class TestCopyMoveDelete:
     """测试 copy/move/delete。"""
 
@@ -349,12 +335,10 @@ class TestCopyMoveDelete:
         client.delete_object('gone.txt')
         assert not client.exists('gone.txt')
         client.delete_object('gone.txt')  # 再删一次不抛异常
-
 # endregion
 
 
 # region ======== 前缀隔离 ========
-
 class TestPrefix:
     """测试 cfg.prefix 全局前缀对调用方透明。"""
 
@@ -373,12 +357,10 @@ class TestPrefix:
         c2 = LocalOssClient(OssCfg(oss_type='local', bucket='oss', storage_options={'base_dir': root_dir}, prefix='x'))
         c1.put_object('k', '1')
         assert c2.exists('k')
-
 # endregion
 
 
 # region ======== 只读配置 ========
-
 class TestReadOnly:
     """测试 read_only 配置写拦截。"""
 
@@ -415,12 +397,10 @@ class TestReadOnly:
         assert ro_client.get_object_text('pre.txt') == 'read me'
         assert ro_client.list_keys() == ['pre.txt']
         assert ro_client.exists('pre.txt')
-
 # endregion
 
 
 # region ======== bucket 映射与目录安全 ========
-
 class TestBucketAndSafety:
     """测试 bucket 子目录映射与目录穿越防护。"""
 
@@ -460,12 +440,10 @@ class TestBucketAndSafety:
     def test_oss_type_mismatch_rejected(self) -> None:
         with pytest.raises(ValueError, match='oss_type'):
             LocalOssClient(OssCfg(oss_type='aliyun', storage_options={'base_dir': '/tmp/x'}))
-
 # endregion
 
 
 # region ======== 桶入参语义（调用传桶 > cfg 默认桶 > 报错） ========
-
 class TestBucketArg:
     """测试 bucket 入参的三级解析：入参优先、cfg 默认桶回退、皆缺报错。"""
 
@@ -566,12 +544,10 @@ class TestBucketArg:
         blank = LocalOssClient(OssCfg(oss_type='local', storage_options={'base_dir': root_dir}))
         with pytest.raises(ValueError, match='bucket'):
             blank.put_object('k.txt', 'v', bucket='  ')
-
 # endregion
 
 
 # region ======== 元数据（旁车 .meta.json） ========
-
 class TestMetadata:
     """测试 content_type / metadata 的旁车承载与读回。"""
 
@@ -712,12 +688,10 @@ class TestMetadata:
             assert st.content_type is None
             assert st.metadata is None
             assert client.get_object_text('m/bad.txt') == 'v'
-
 # endregion
 
 
 # region ======== OssManager ========
-
 class TestOssManager:
     """测试管理器注册表与便捷转发。"""
 
@@ -785,5 +759,4 @@ class TestOssManager:
         assert mgr.get_object_text('k.txt') == 'default'
         assert mgr.get_object_text('k.txt', bucket='tmp') == 'explicit'
         assert mgr.list_keys(bucket='tmp') == ['k.txt']
-
 # endregion

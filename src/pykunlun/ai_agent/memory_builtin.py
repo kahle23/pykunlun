@@ -104,7 +104,6 @@ class SqliteMemoryStore(MemoryStore):
         return self._table
 
     # region ======== 连接与执行 ========
-
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row
@@ -126,11 +125,9 @@ class SqliteMemoryStore(MemoryStore):
             return cur.rowcount
         finally:
             conn.close()
-
     # endregion
 
     # region ======== 建表（幂等）======
-
     def init_store(self) -> None:
         t = self._table
         self._execute(f"""CREATE TABLE IF NOT EXISTS {t} (
@@ -169,11 +166,9 @@ class SqliteMemoryStore(MemoryStore):
             self._execute(f'ALTER TABLE {self._table} ADD COLUMN machine TEXT')
         if 'agent_name' not in existing:
             self._execute(f'ALTER TABLE {self._table} ADD COLUMN agent_name TEXT')
-
     # endregion
 
     # region ======== 写操作 ========
-
     def remember(self, record: MemoryRecord, shared_mode: bool = False) -> int:
         now = datetime.now()
         t = self._table
@@ -241,11 +236,9 @@ class SqliteMemoryStore(MemoryStore):
         sql = (f'UPDATE {self._table} SET use_count = use_count + 1, last_used_at = ? '
                f'WHERE id = ?')
         self._execute(sql, (_iso(datetime.now()), id))
-
     # endregion
 
     # region ======== 读操作 ========
-
     def get(self, id: int, shared_mode: bool = False) -> MemoryRecord | None:
         vis_sql, vis_params = visibility_clause(shared_mode, self._owner, '?')
         params: list[Any] = [id]
@@ -341,5 +334,4 @@ class SqliteMemoryStore(MemoryStore):
                f' LIMIT ?')
         params.append(limit)
         return self._query(sql, tuple(params))
-
     # endregion

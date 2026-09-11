@@ -31,8 +31,8 @@ from pykunlun.task.plan import (
     step_disposition_on_fail,
 )
 
-# region ======== fixture ========
 
+# region ======== fixture ========
 @pytest.fixture
 def store_path() -> Iterator[str]:
     """提供一个临时 sqlite 文件路径，测试结束自动清理。"""
@@ -98,12 +98,10 @@ def _run(store: SqlitePlanTaskService, rid: int) -> TaskRun:
     r = store.get_run(rid)
     assert r is not None
     return r
-
 # endregion
 
 
 # region ======== 状态机纯函数 ========
-
 @pytest.mark.parametrize('old,new', [(o, n) for o, targets in TASK_TRANSITIONS.items()
                                      for n in targets])
 def test_task_legal_transitions(old: str, new: str):
@@ -151,12 +149,10 @@ def test_step_illegal_transitions(old: str, new: str):
 ])
 def test_step_disposition_on_fail(retry_count: int, max_retries: int, expected: str):
     assert step_disposition_on_fail(retry_count, max_retries) == expected
-
 # endregion
 
 
 # region ======== 数据类 ========
-
 def test_plan_task_dict_roundtrip():
     t = PlanTask(title='T', goal='G', params={'a': 1}, max_retries=3)
     d = t.to_dict()
@@ -169,12 +165,10 @@ def test_task_step_defaults():
     s = TaskStep(task_id=1, name='n', instruction='i')
     assert s.status == 'pending' and s.step_type == 'agent'
     assert s.max_retries is None and s.seq is None
-
 # endregion
 
 
 # region ======== 管理器 ========
-
 def test_manager_unregistered_raises():
     m = PlanTaskManager()
     with pytest.raises(KeyError, match='未注册'):
@@ -187,12 +181,10 @@ def test_manager_forward(mgr: PlanTaskManager, store: SqlitePlanTaskService):
     assert _task(store, tid).title == 'T'
     assert store.get_task(tid) is not None  # 同一底层 store
     assert mgr.get_registered_names() == ['default']
-
 # endregion
 
 
 # region ======== 建表 / 任务 / 步骤基础 ========
-
 def test_rejects_memory_path():
     with pytest.raises(ValueError, match=':memory:'):
         SqlitePlanTaskService(':memory:')
@@ -266,12 +258,10 @@ def test_add_steps_batch(store: SqlitePlanTaskService):
             TaskStep(task_id=tid, name='x', instruction='i'),
             TaskStep(task_id=tid + 100, name='y', instruction='i'),
         ])
-
 # endregion
 
 
 # region ======== claim / finish / fail 主循环 ========
-
 def test_claim_returns_context_package(store: SqlitePlanTaskService):
     tid = _mk_task(store)
     sids = _mk_steps(store, tid, names=('one', 'two'))
@@ -394,12 +384,10 @@ def test_fail_terminal_run_returns_empty(store: SqlitePlanTaskService):
     assert p is not None
     store.finish_run(p['run_id'], output='ok')
     assert store.fail_run(p['run_id'], 'late error') == ''
-
 # endregion
 
 
 # region ======== skip / retry / pause / resume / cancel ========
-
 def test_skip_pending_step(store: SqlitePlanTaskService):
     tid = _mk_task(store)
     sids = _mk_steps(store, tid, names=('one', 'two'))
@@ -506,12 +494,10 @@ def test_cancel_pending_task(store: SqlitePlanTaskService):
     tid = _mk_task(store)
     assert store.cancel(tid) is True
     assert _task(store, tid).status == 'cancelled'
-
 # endregion
 
 
 # region ======== sweep 僵尸恢复 ========
-
 def test_sweep_task_level_heartbeat_timeout(store: SqlitePlanTaskService):
     """任务心跳超时：running run 置 timeout，步骤按预算回 pending，任务保持 running。"""
     tid = _mk_task(store, max_retries=1, heartbeat_timeout_sec=0)   # 阈值 0 → 立即超时
@@ -604,12 +590,10 @@ def test_sweep_total_timeout_ignores_unset(store: SqlitePlanTaskService):
     _mk_steps(store, tid, names=('one',))
     store.claim_next_step(tid)
     assert store.sweep() == []
-
 # endregion
 
 
 # region ======== 事件 / 产物 ========
-
 def test_events_automatic_and_manual(store: SqlitePlanTaskService):
     tid = _mk_task(store)
     _mk_steps(store, tid, names=('one',))
@@ -638,12 +622,10 @@ def test_artifacts(store: SqlitePlanTaskService):
     assert len(arts) == 1 and arts[0]['path'] == 'docs/report.md'
     with pytest.raises(ValueError, match='art_type'):
         store.add_artifact(tid, 'movie', 'x.mp4')
-
 # endregion
 
 
 # region ======== 无人值守执行（run_task） ========
-
 def _py(code: str) -> str:
     """跨平台 python -c 命令行（可执行路径加引号，防带空格路径断裂）。"""
     return f'"{sys.executable}" -c "{code}"'
@@ -712,5 +694,4 @@ def test_run_task_empty_instruction_guarded(store: SqlitePlanTaskService):
     with pytest.raises(ValueError, match='instruction 不能为空'):
         store.add_step(TaskStep(task_id=tid, name='空命令', instruction='   ',
                                 step_type='bash', seq=1))
-
 # endregion

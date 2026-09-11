@@ -15,8 +15,8 @@ import pytest
 
 from pykunlun.util import pathutil
 
-# region ======== normpath ========
 
+# region ======== normpath ========
 class TestNormpath:
     """测试 normpath 规范化规则（posixpath.normpath 浅层包装）。"""
 
@@ -61,7 +61,6 @@ class TestNormpath:
         assert pathutil.normpath('.') == '.'
         assert pathutil.normpath('./') == '.'
 
-
     def test_backslash_unified_before_resolve(self) -> None:
         """反斜杠先归一为 / 再消解（POSIX 中 \\ 本是合法文件名字符）。"""
         assert pathutil.normpath('a\\..\\b') == 'b'
@@ -71,17 +70,14 @@ class TestNormpath:
         """'...' 是普通段，不参与消解。"""
         assert pathutil.normpath('a/.../b') == 'a/.../b'
 
-
     def test_empty_path_rejected(self) -> None:
         for bad in ('', '   '):
             with pytest.raises(ValueError):
                 pathutil.normpath(bad)
-
 # endregion
 
 
 # region ======== join_path ========
-
 class TestJoinPath:
     """测试 join_path 路径合并。"""
 
@@ -110,12 +106,10 @@ class TestJoinPath:
         """合并后整体规范化，段间 .. 消解前段。"""
         assert pathutil.join_path('a/b', '../c') == 'a/c'
         assert pathutil.join_path('a', '..') == '.'
-
 # endregion
 
 
 # region ======== sub_path ========
-
 class TestSubPath:
     """测试 sub_path 前缀剥除。"""
 
@@ -151,5 +145,4 @@ class TestSubPath:
     def test_case_sensitive(self) -> None:
         """大小写敏感（POSIX 键/URL 语义）。"""
         assert pathutil.sub_path('a/b/c', 'A/B') == 'a/b/c'
-
 # endregion

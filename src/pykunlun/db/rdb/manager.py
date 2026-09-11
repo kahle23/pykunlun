@@ -77,7 +77,6 @@ class RdbManager:
     """
 
     # region ======== 构造 ========
-
     #: 默认实例名称
     DEFAULT_NAME: str = "default"
 
@@ -97,11 +96,9 @@ class RdbManager:
         self._backup_registry: dict[str, RdbBackupService] = {}
         self._lock = threading.RLock()
         self._config_loader = config_loader
-
     # endregion
 
     # region ======== getter ========
-
     def get_config_loader(self) -> Callable[['RdbManager', str], None] | None:
         """
         获取配置加载器。
@@ -110,11 +107,9 @@ class RdbManager:
             配置加载器 callable，未设置时返回 None。
         """
         return self._config_loader
-
     # endregion
 
     # region ======== 类注册表（db_type -> RdbClient 子类） ========
-
     def _maybe_wrap_read_only(self, client: RdbClient) -> RdbClient:
         """
         若客户端配置为只读（``cfg.read_only=True``）且尚未被只读代理包裹，则套一层
@@ -249,11 +244,9 @@ class RdbManager:
         """
         with self._lock:
             return list(self._class_registry.keys())
-
     # endregion
 
     # region ======== 实例注册表（name -> RdbClient 实例） ========
-
     def _resolve_name(self, name: str | None) -> str:
         """
         将名称解析为注册表键：为空时回落到 :attr:`DEFAULT_NAME`。
@@ -345,11 +338,9 @@ class RdbManager:
         """
         with self._lock:
             return list(self._client_registry.keys())
-
     # endregion
 
     # region ======== 备份服务注册表（db_type -> RdbBackupService 实例） ========
-
     def register_backup_service(self, service: RdbBackupService) -> None:
         """
         注册或替换一个备份服务（按服务自身的 :attr:`~RdbBackupService.db_type` 归档）。
@@ -427,11 +418,9 @@ class RdbManager:
         """
         with self._lock:
             return list(self._backup_registry.keys())
-
     # endregion
 
     # region ======== 执行便捷方法（透传 RdbClient） ========
-
     def get_connection(self, name: str | None = None) -> Any:
         """
         打开并返回指定实例的数据库连接（透传 :meth:`RdbClient.get_connection`）。
@@ -489,11 +478,9 @@ class RdbManager:
             受影响的行数。
         """
         return self.get_client(name).execute(sql, params)
-
     # endregion
 
     # region ======== 备份/恢复便捷方法（透传 RdbBackupService，cfg 作参数） ========
-
     def dump(
         self,
         cfg: RdbCfg,
@@ -566,5 +553,4 @@ class RdbManager:
                 f"恢复操作要求 cfg.db_type 不能为空：{cfg.database!r}"
             )
         return self.get_backup_service(db_type).restore(cfg, input_path, verbose, timeout)
-
     # endregion

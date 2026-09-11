@@ -31,7 +31,6 @@ log = logutil.getLogger(__name__)
 
 
 # region ======== 策略抽象基类 ========
-
 class OcrEngine(ABC):
     """
     OCR 策略抽象基类（绑定一份 :class:`OcrCfg` 配置）。
@@ -83,7 +82,6 @@ class OcrEngine(ABC):
     """
 
     # region ======== 构造与配置校验 ========
-
     def __init__(self, cfg: OcrCfg) -> None:
         """
         Args:
@@ -152,11 +150,9 @@ class OcrEngine(ABC):
         """
         if not self.cfg.lang:
             raise ValueError("OCR 配置缺少必填字段: lang")
-
     # endregion
 
     # region ======== 引擎标识（抽象） ========
-
     #: 本实现类代表的引擎**类型**标识（如 ``rapid``、``easy``、``paddle``、``paddle3``、``server``）。
     #:
     #: 由各实现类以**类级常量**形式硬编码提供，标识"本类是哪种引擎的策略"。
@@ -166,11 +162,9 @@ class OcrEngine(ABC):
     #: 注意：这是"类型"而非"名字"。同一类型可在 :class:`OcrManager` 中注册多份不同配置的
     #: 实例，由 :meth:`OcrManager.register_engine` 的 ``name``（实例别名）区分。
     engine_type: ClassVar[str]
-
     # endregion
 
     # region ======== 引擎差异钩子 ========
-
     @abstractmethod
     def _recognize_array(self, image: 'npt.NDArray[Any]') -> list[OcrResult]:
         """
@@ -189,11 +183,9 @@ class OcrEngine(ABC):
         Raises:
             RuntimeError: 底层引擎识别失败时抛出。
         """
-
     # endregion
 
     # region ======== 图片加载与结果清洗（可覆写钩子） ========
-
     def _load_image(self, image: Union[str, 'npt.NDArray[Any]']) -> 'npt.NDArray[Any]':
         """
         将输入统一加载为 OpenCV 图像数组（**可覆写钩子**）。
@@ -262,11 +254,9 @@ class OcrEngine(ABC):
                     OcrResult(text=text, bbox=r.bbox, confidence=r.confidence)
                 )
         return cleaned
-
     # endregion
 
     # region ======== 通用识别接口（模板方法） ========
-
     def recognize(self, image: Union[str, 'npt.NDArray[Any]']) -> str:
         """
         识别图片中的文字，返回纯文本结果。
@@ -361,8 +351,5 @@ class OcrEngine(ABC):
                 buf.tofile(output_path)
 
         return img
-
     # endregion
-
-
 # endregion

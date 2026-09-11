@@ -14,8 +14,8 @@ import pytest
 
 from pykunlun.util import fileutil
 
-# region ======== make_parent_dirs ========
 
+# region ======== make_parent_dirs ========
 class TestMakeParentDirs:
     """测试 make_parent_dirs 的父目录创建语义（一律建入参的 .parent）。"""
 
@@ -64,5 +64,4 @@ class TestMakeParentDirs:
         blocker.write_text('occupied', encoding='utf-8')
         with pytest.raises(FileExistsError):
             fileutil.make_parent_dirs(blocker / 'f.txt')
-
 # endregion

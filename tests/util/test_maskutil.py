@@ -17,8 +17,8 @@ from pykunlun.data.mask import (
 )
 from pykunlun.util import CommandPasswordMasker, EnvMasker, maskutil
 
-# region ======== 内置数据策略 ========
 
+# region ======== 内置数据策略 ========
 class TestPhoneMasker:
     def test_support_hit(self):
         assert PhoneMasker().support('13812345678') is True
@@ -125,12 +125,10 @@ class TestBuiltinPlaceholderConfig:
     def test_default_unchanged(self):
         """不传占位符时仍用默认值。"""
         assert PhoneMasker().apply('13812345678') == '138****5678'
-
 # endregion
 
 
 # region ======== mask_manager 自动探测 + 转发门面 ========
-
 class TestMaskManagerAutoDetect:
     def test_has_all_builtins(self):
         assert set(maskutil.mask_manager.get_masker_names()) == {
@@ -233,12 +231,10 @@ class TestMaskByNameFacade:
             assert False, '应抛 KeyError'
         except KeyError:
             pass
-
 # endregion
 
 
 # region ======== 命令行密码脱敏 ========
-
 class TestCommandPasswordMasker:
     """CommandPasswordMasker 策略本身的 support/apply/register_flag/占位符。"""
 
@@ -340,12 +336,10 @@ class TestCommandMaskingEdgeCases:
         assert result == ['t', '--password=***']
         assert result is not src          # 必须是新列表
         assert src == ['t', '--password=secret']  # 原输入未被修改
-
 # endregion
 
 
 # region ======== 环境变量脱敏 ========
-
 class TestEnvMasker:
     """EnvMasker 策略本身的 support/apply/register_sensitive_key/占位符。"""
 
@@ -415,5 +409,4 @@ class TestEnvMaskingViaMask:
     def test_does_not_leak_secret(self):
         result = maskutil.mask({'PGPASSWORD': 'super-secret-value'})
         assert 'super-secret-value' not in result['PGPASSWORD']
-
 # endregion
