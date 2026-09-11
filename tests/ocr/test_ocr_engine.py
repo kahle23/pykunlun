@@ -28,8 +28,6 @@ class _StubOcr(OcrEngine):
 
 
 # region ======== OcrEngine：engine_type 与不可变性 ========
-
-
 class TestOcrEngineEngineType:
     def test_engine_type_derived_when_cfg_omits(self):
         # cfg.engine_type 省略时由实现类常量推导并回填 cfg
@@ -56,13 +54,9 @@ class TestOcrEngineEngineType:
         eng = _StubOcr(OcrCfg())
         with pytest.raises(AttributeError):
             eng.cfg = OcrCfg()
-
-
 # endregion
 
 # region ======== OcrManager：类注册表 + 工厂 + 实例别名 ========
-
-
 class TestOcrManager:
     def test_register_engine_class_and_lookup(self):
         m = OcrManager()
@@ -135,6 +129,4 @@ class TestOcrManager:
         eng = m.get_engine('lazy')  # 首次未命中 → 触发 loader
         assert loaded == ['lazy']
         assert isinstance(eng, _StubOcr)
-
-
 # endregion

@@ -30,7 +30,6 @@ _MISS: Any = object()
 
 
 # region ======== 默认实例 ========
-
 #: 默认缓存管理器（命名缓存注册表）。
 cache_manager = CacheManager()
 
@@ -72,12 +71,10 @@ def get_cache_names() -> list[str]:
 def clear_all() -> None:
     """清空所有已注册缓存的内容（转发，便于运维 / 单测一键重置）。"""
     cache_manager.clear_all()
-
 # endregion
 
 
 # region ======== @cached 装饰器 ========
-
 def _default_key(*args: Any, **kwargs: Any) -> Any:
     """
     默认 key 构造：``(args, tuple(sorted(kwargs.items())))``。
@@ -153,5 +150,4 @@ def cached(
         return wrapper
 
     return decorator
-
 # endregion

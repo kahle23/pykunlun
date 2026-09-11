@@ -88,6 +88,7 @@ import mimetypes
 import shutil
 from abc import ABC, abstractmethod
 from contextlib import closing
+from dataclasses import replace
 from io import BytesIO
 from typing import Any, BinaryIO, ClassVar
 
@@ -120,7 +121,6 @@ class OssClient(ABC):
     """
 
     # region ======== 构造与配置校验 ========
-
     def __init__(self, cfg: OssCfg) -> None:
         """
         Args:
@@ -190,11 +190,9 @@ class OssClient(ABC):
             ValueError: 必填字段为空或取值非法时抛出。
         """
         pass
-
     # endregion
 
     # region ======== 键预处理钩子 ========
-
     def _prepare_key(self, key: str) -> str:
         """
         键预处理钩子：公共方法在合成物理键前对逻辑键的统一预处理（模板方法）。
@@ -214,11 +212,9 @@ class OssClient(ABC):
             ValueError: 默认实现下键为空时抛出。
         """
         return normpath(key)
-
     # endregion
 
     # region ======== 只读守卫 ========
-
     def _ensure_writable(self, op: str) -> None:
         """
         写操作前置守卫：只读配置下拒绝一切写操作。
@@ -236,11 +232,9 @@ class OssClient(ABC):
             raise PermissionError(
                 f"配置为只读（read_only=True），拒绝写操作: {op}"
             )
-
     # endregion
 
     # region ======== 桶解析 ========
-
     def _effective_bucket(self, bucket: str | None) -> str:
         """
         解析本次调用生效的桶：显式入参优先，缺省回退配置默认桶（模板方法）。
@@ -262,10 +256,23 @@ class OssClient(ABC):
             )
         return effective
 
+    def _effective_dst_bucket(self, dst_bucket: str | None, src_bucket: str) -> str:
+        """
+        解析复制/移动的目标桶：显式入参优先，缺省（None 或空白）回退源桶（同桶）。
+
+        Args:
+            dst_bucket: 调用方传入的目标桶名；None 或空白视为未传。
+            src_bucket: 已解析的源桶名（由 :meth:`_effective_bucket` 得出）。
+
+        Returns:
+            生效的目标桶名，直接交给底层钩子的 ``dst_bucket`` 参数。
+        """
+        if dst_bucket and dst_bucket.strip():
+            return self._effective_bucket(dst_bucket)
+        return src_bucket
     # endregion
 
     # region ======== 底层钩子（子类必须实现，首参桶名 + 物理键语义） ========
-
     #: 本实现类代表的存储类型标识（如 ``local``、``aliyun``）。
     #:
     #: 由各实现类以**类级常量**形式硬编码提供，标识"本类是哪种存储的实现"。
@@ -381,11 +388,9 @@ class OssClient(ABC):
             FileNotFoundError: 源对象不存在时抛出。
         """
         pass
-
     # endregion
 
     # region ======== 可选钩子（子类按需覆盖） ========
-
     def _upload_file(self, bucket: str, key: str, local_path: str,
                      content_type: str | None = None,
                      metadata: dict[str, str] | None = None) -> None:
@@ -460,11 +465,9 @@ class OssClient(ABC):
         持有连接池等长期资源的实现应覆盖本方法。
         """
         pass
-
     # endregion
 
     # region ======== 公共接口（写） ========
-
     def put_object(self, key: str, data: bytes | str, content_type: str | None = None,
                    metadata: dict[str, str] | None = None,
                    bucket: str | None = None) -> None:
@@ -528,7 +531,7 @@ class OssClient(ABC):
             FileNotFoundError: 源对象不存在时抛出。
         """
         src_b = self._effective_bucket(bucket)
-        dst_b = self._effective_bucket(dst_bucket) if (dst_bucket and dst_bucket.strip()) else src_b
+        dst_b = self._effective_dst_bucket(dst_bucket, src_b)
         self._ensure_writable('copy_object')
         self._copy(src_b,
                    join_path(self._prefix, self._prepare_key(src_key)),
@@ -555,7 +558,7 @@ class OssClient(ABC):
             FileNotFoundError: 源对象不存在时抛出。
         """
         src_b = self._effective_bucket(bucket)
-        dst_b = self._effective_bucket(dst_bucket) if (dst_bucket and dst_bucket.strip()) else src_b
+        dst_b = self._effective_dst_bucket(dst_bucket, src_b)
         self._ensure_writable('move_object')
         physical_src = join_path(self._prefix, self._prepare_key(src_key))
         physical_dst = join_path(self._prefix, self._prepare_key(dst_key))
@@ -591,11 +594,9 @@ class OssClient(ABC):
                           join_path(self._prefix, self._prepare_key(key)), local_path,
                           content_type, metadata)
         log.debug("upload_file: %s <- %s", key, local_path)
-
     # endregion
 
     # region ======== 公共接口（读） ========
-
     def get_object(self, key: str, bucket: str | None = None) -> bytes:
         """
         读取对象内容字节。
@@ -668,20 +669,12 @@ class OssClient(ABC):
         Raises:
             ValueError: 键非法或未指定桶时抛出。
         """
-        prefix = self._prefix
         st = self._head(self._effective_bucket(bucket),
-                        join_path(prefix, self._prepare_key(key)))
+                        join_path(self._prefix, self._prepare_key(key)))
         if st is None:
             return None
-        return ObjectStat(
-            key=sub_path(st.key, self._prefix),
-            size=st.size,
-            last_modified=st.last_modified,
-            etag=st.etag,
-            content_type=st.content_type,
-            metadata=st.metadata,
-            extra=st.extra,
-        )
+        # 物理键元信息 → 逻辑键元信息：仅剥前缀，其余字段经 replace 原样透传
+        return replace(st, key=sub_path(st.key, self._prefix))
 
     def list_objects(self, prefix: str = '', delimiter: str | None = None,
                      bucket: str | None = None) -> list[ObjectStat]:
@@ -706,20 +699,9 @@ class OssClient(ABC):
         physical_prefix = (self._prefix + normpath(prefix) + '/'
                            if prefix.strip() else self._prefix)
         stats = self._list(effective_bucket, physical_prefix, delimiter)
-        return [
-            ObjectStat(
-                key=sub_path(st.key, self._prefix),
-                size=st.size,
-                last_modified=st.last_modified,
-                etag=st.etag,
-                # 云端列举接口不返回元数据（本地列举亦不读旁车），保持恒 None
-                content_type=st.content_type,
-                metadata=st.metadata,
-                # 实现特有字段按底层接口能力透传（如 S3 列举返回的 StorageClass）
-                extra=st.extra,
-            )
-            for st in stats
-        ]
+        # 仅剥前缀转为逻辑键，其余字段经 replace 原样透传；列举路径下
+        # content_type/metadata 恒 None（列举接口不返回元数据），extra 按底层能力透传
+        return [replace(st, key=sub_path(st.key, self._prefix)) for st in stats]
 
     def list_keys(self, prefix: str = '', delimiter: str | None = None,
                   bucket: str | None = None) -> list[str]:
@@ -775,5 +757,4 @@ class OssClient(ABC):
         """
         return self._presigned_url(self._effective_bucket(bucket),
                                    join_path(self._prefix, self._prepare_key(key)), expires)
-
     # endregion

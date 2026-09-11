@@ -69,7 +69,6 @@ class OcrManager:
     """
 
     # region ======== 构造 ========
-
     #: 默认实例名称
     DEFAULT_NAME: str = "default"
 
@@ -87,11 +86,9 @@ class OcrManager:
         self._engine_registry: dict[str, OcrEngine] = {}
         self._lock = threading.RLock()
         self._config_loader = config_loader
-
     # endregion
 
     # region ======== getter ========
-
     def get_config_loader(self) -> Callable[['OcrManager', str], None] | None:
         """
         获取配置加载器。
@@ -100,11 +97,9 @@ class OcrManager:
             配置加载器 callable，未设置时返回 None。
         """
         return self._config_loader
-
     # endregion
 
     # region ======== 类注册表（engine_type -> OcrEngine 子类） ========
-
     def _create_engine_from_cfg(self, cfg: OcrCfg) -> OcrEngine:
         """
         按 ``cfg.engine_type`` 从类注册表取出实现类并实例化（内部工具）。
@@ -214,11 +209,9 @@ class OcrManager:
         """
         with self._lock:
             return list(self._class_registry.keys())
-
     # endregion
 
     # region ======== 实例注册表（name -> OcrEngine 实例） ========
-
     def _resolve_name(self, name: str | None) -> str:
         """将名称解析为注册表键：为空时回落到 :attr:`DEFAULT_NAME`。"""
         return name if name else self.DEFAULT_NAME
@@ -305,11 +298,9 @@ class OcrManager:
         """
         with self._lock:
             return list(self._engine_registry.keys())
-
     # endregion
 
     # region ======== 识别便捷方法（透传 OcrEngine） ========
-
     def recognize(self, image: Union[str, 'npt.NDArray[Any]'], name: str | None = None) -> str:
         """
         识别图片中的文字，返回纯文本（透传 :meth:`OcrEngine.recognize`）。
@@ -362,5 +353,4 @@ class OcrManager:
         return self.get_engine(name).recognize_and_draw(
             image, output_path=output_path, color=color, thickness=thickness
         )
-
     # endregion

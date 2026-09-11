@@ -11,8 +11,8 @@ import os
 import platform
 from collections.abc import Callable
 
-# region ======== 平台信息 ========
 
+# region ======== 平台信息 ========
 def get_os_name() -> str:
     """
     获取操作系统名称（小写）。
@@ -182,6 +182,4 @@ def get_shell_profile_path(
         return os.path.join(user_home, ".kshrc")
     # sh / dash / 未知 shell：兜底走 POSIX .profile
     return os.path.join(user_home, ".profile")
-
-
 # endregion

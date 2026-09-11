@@ -32,7 +32,6 @@ T = TypeVar('T')
 
 
 # region ======== 脱敏策略抽象基类 ========
-
 class Masker(ABC, Generic[T]):
     """
     脱敏策略抽象基类：判断 + 处理（泛型 ``Masker[T]``）。
@@ -179,12 +178,10 @@ class Masker(ABC, Generic[T]):
             脱敏后的值（与入参同类型）。
         """
         raise NotImplementedError
-
 # endregion
 
 
 # region ======== 内置脱敏策略 ========
-
 class PhoneMasker(Masker[str]):
     """
     手机号脱敏策略。
@@ -317,12 +314,10 @@ class UniversalMasker(Masker[str]):
 
     def apply(self, value: str) -> str:
         return self._mask_all(value)
-
 # endregion
 
 
 # region ======== 脱敏策略编排器 ========
-
 class MaskManager:
     """
     脱敏策略编排器：注册若干 :class:`Masker`，按内容自动探测脱敏或按名显式分发。
@@ -488,5 +483,4 @@ class MaskManager:
         if masker is None:
             raise KeyError(name)
         return masker.apply(value)
-
 # endregion

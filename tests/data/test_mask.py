@@ -61,7 +61,6 @@ class _AlwaysHi(Masker[str]):
 
 
 # region ======== Masker：实例占位符 + 私有原语 + ABC ========
-
 class TestMaskerAbc:
     def test_not_instantiable(self):
         """Masker 是 ABC，不能直接实例化。"""
@@ -164,12 +163,10 @@ class TestMaskPartPrimitive:
         """apply 经 _mask_part 透传实例占位符。"""
         m = _PlaceholderMasker(mask_placeholder='#')
         assert m.apply('abcdef') == 'a####f'
-
 # endregion
 
 
 # region ======== MaskManager ========
-
 class TestMaskManagerRegister:
     def test_empty_manager(self):
         mgr = MaskManager()
@@ -319,5 +316,4 @@ class TestResolveName:
 
         mgr = _CustomManager()
         assert mgr._resolve_name('  abc  ') == 'ABC'
-
 # endregion

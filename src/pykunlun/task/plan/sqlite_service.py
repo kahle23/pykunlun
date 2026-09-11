@@ -191,7 +191,6 @@ class SqlitePlanTaskService(PlanTaskService):
             f"VALUES (?,?,?,?,?,?,?)",
             (task_id, step_id, run_id, event_type, level, message, _iso(datetime.now())),
         )
-
     # endregion
 
     # region ======== 建表（幂等）与补列迁移 ========
@@ -300,7 +299,6 @@ class SqlitePlanTaskService(PlanTaskService):
         ]
         for stmt in indexes:
             conn.execute(stmt)
-
     # endregion
 
     # region ======== 行转换 ========
@@ -323,7 +321,6 @@ class SqlitePlanTaskService(PlanTaskService):
             f"UPDATE {self._t('plan_task_instance')} SET heartbeat_at = ?, updated_at = ? WHERE id = ?",
             (_iso(datetime.now()), _iso(datetime.now()), task_id),
         )
-
     # endregion
 
     # region ======== 任务 ========
@@ -466,7 +463,6 @@ class SqlitePlanTaskService(PlanTaskService):
         """
         with self._conn() as conn:
             self._event(conn, task_id, event_type, message)
-
     # endregion
 
     # region ======== 步骤 ========
@@ -666,7 +662,6 @@ class SqlitePlanTaskService(PlanTaskService):
                 )
                 self._event(conn, task["id"], "state_change", f"task: {task['status']} → running (manual retry revive)")
         return True
-
     # endregion
 
     # region ======== 执行 ========
@@ -942,7 +937,6 @@ class SqlitePlanTaskService(PlanTaskService):
                 )
             self._touch_heartbeat(conn, run["task_id"])
         return "released"
-
     # endregion
 
     # region ======== 恢复（sweep） ========
@@ -1352,7 +1346,6 @@ class SqlitePlanTaskService(PlanTaskService):
         if findings:
             log.info("verify task=%s 发现 %d 处异常%s", task_id, len(findings), "，已修复" if fix else "")
         return findings
-
     # endregion
 
     # region ======== 产物 / 事件 ========
@@ -1405,5 +1398,4 @@ class SqlitePlanTaskService(PlanTaskService):
         return self._query(
             f"SELECT * FROM {self._t('plan_task_event')} WHERE task_id = ? ORDER BY id DESC LIMIT ?", (task_id, limit)
         )
-
     # endregion

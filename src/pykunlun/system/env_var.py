@@ -24,7 +24,6 @@ SCOPE_USER = 2    # 用户级环境变量
 
 
 # region ======== 策略抽象基类 ========
-
 class EnvVarService(ABC):
     """
     环境变量管理策略抽象基类。
@@ -121,13 +120,10 @@ class EnvVarService(ABC):
             PATH 环境变量值，不存在时返回 default。
         """
         return os.environ.get("PATH", default)
-
-
 # endregion
 
 
 # region ======== 环境变量服务管理器（共享注册表） ========
-
 class EnvVarManager:
     """
     环境变量服务管理器（平台注册表）。
@@ -225,5 +221,4 @@ class EnvVarManager:
             平台标识列表。
         """
         return list(self._registry.keys())
-
 # endregion

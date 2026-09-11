@@ -77,7 +77,6 @@ class RapidOcr(OcrEngine):
     engine_type: ClassVar[str] = 'rapid'
 
     # region ======== 构造 ========
-
     def __init__(self, cfg: OcrCfg | None = None) -> None:
         """
         Args:
@@ -111,11 +110,9 @@ class RapidOcr(OcrEngine):
         # 包体内置模型，无需联网下载。
         self._engine = RapidOCR()
         self._use_cls: bool = cfg.use_angle_cls
-
     # endregion
 
     # region ======== OcrEngine 实现 ========
-
     def _recognize_array(self, image: 'npt.NDArray[Any]') -> list[OcrResult]:
         """
         调用 RapidOCR 识别图像数组。
@@ -151,5 +148,4 @@ class RapidOcr(OcrEngine):
                 bbox = []
             out.append(OcrResult(text=text or '', bbox=bbox, confidence=confidence))
         return out
-
     # endregion

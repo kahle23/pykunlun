@@ -64,7 +64,6 @@ class LocalOssClient(OssClient):
     EXT_BASE_DIR: ClassVar[str] = 'base_dir'
 
     # region ======== 配置校验 ========
-
     def _validate_and_prepare_cfg(self) -> None:
         """
         本地实现仅需 :attr:`EXT_BASE_DIR` 键（``storage_options['base_dir']``，本地根目录）。
@@ -84,11 +83,9 @@ class LocalOssClient(OssClient):
                 f"本地对象存储配置 storage_options['{self.EXT_BASE_DIR}']（本地根目录）不能为空"
             )
         options[self.EXT_BASE_DIR] = str(Path(base_dir).resolve())
-
     # endregion
 
     # region ======== 内部定位 ========
-
     def _base_dir(self) -> Path:
         """
         解析存储根目录（不含桶）。
@@ -96,9 +93,10 @@ class LocalOssClient(OssClient):
         Returns:
             绝对化后的根目录路径。
         """
-        # base_dir 已在构造校验时转绝对路径写回 storage_options
-        base_dir = self.cfg.storage_options.get(self.EXT_BASE_DIR)
-        return Path(base_dir) if base_dir else Path('.')
+        # base_dir 已在构造校验时转绝对路径写回 storage_options（构造即校验的不变量，
+        # 直取索引：不变量被破坏时以 KeyError 显式暴露，不做静默兜底）
+        base_dir = cast('str', self.cfg.storage_options[self.EXT_BASE_DIR])
+        return Path(base_dir)
 
     def _bucket_dir(self, bucket: str) -> Path:
         """
@@ -138,11 +136,9 @@ class LocalOssClient(OssClient):
         if real_target != real_base and not real_target.startswith(real_base + os.sep):
             raise ValueError(f"对象键解析后逃逸出存储根目录: {key!r}")
         return target
-
     # endregion
 
     # region ======== 元数据旁车（.meta.json） ========
-
     def _sidecar_path(self, bucket: str, key: str) -> Path:
         """
         解析物理键对应的元数据旁车文件路径。
@@ -203,7 +199,8 @@ class LocalOssClient(OssClient):
         try:
             data: Any = json.loads(sidecar.read_text(encoding='utf-8'))
             if not isinstance(data, dict):
-                raise ValueError('旁车内容不是 JSON 对象')
+                # 校验的是外部数据（旁车 JSON）而非调用方入参，损坏按 ValueError 归类
+                raise ValueError('旁车内容不是 JSON 对象')  # noqa: TRY004
             content = cast('dict[str, Any]', data)
             # or None 空值归一：content_type 空串、metadata 空 dict 均视为无
             raw_content_type = content.get('content_type') or None
@@ -221,11 +218,9 @@ class LocalOssClient(OssClient):
             log.warning("元数据旁车文件损坏，忽略: %s", sidecar)
             return None, None
         return content_type, metadata
-
     # endregion
 
     # region ======== 底层钩子实现（首参桶名 + 物理键语义，与基类一一对应） ========
-
     def _put(self, bucket: str, key: str, data: BinaryIO, content_type: str | None = None,
              metadata: dict[str, str] | None = None) -> None:
         target = self._resolve(bucket, key)
@@ -300,15 +295,12 @@ class LocalOssClient(OssClient):
         # 旁车随之搬运：源有则拷、源无则清（复制为覆盖语义，不留目标的旧元数据）
         content_type, metadata = self._read_sidecar(src_bucket, src_key)
         self._write_sidecar(dst_bucket, dst_key, content_type, metadata)
-
     # endregion
 
     # region ======== 可选钩子覆盖（对应基类"可选钩子"区域） ========
-
     def _presigned_url(self, bucket: str, key: str, expires: int) -> str:
         # 本地目录无签名/过期语义：返回 file:// URI（可被本地程序直接打开），
         # expires 仅接受以保持基类签名一致，实际不生效。
         del expires
         return self._resolve(bucket, key).resolve().as_uri()
-
     # endregion

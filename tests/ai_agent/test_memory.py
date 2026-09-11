@@ -21,8 +21,8 @@ from pykunlun.ai_agent import (
     tokenize_query,
 )
 
-# region ======== fixture ========
 
+# region ======== fixture ========
 @pytest.fixture
 def store_path() -> Iterator[str]:
     """提供一个临时 sqlite 文件路径，测试结束自动清理。"""
@@ -49,12 +49,10 @@ def mgr(store: SqliteMemoryStore) -> MemoryManager:
     m = MemoryManager()
     m.register(MemoryManager.DEFAULT_NAME, store)
     return m
-
 # endregion
 
 
 # region ======== 分词 ========
-
 def test_tokenize_query_basic():
     assert tokenize_query('th-core-web 路由 权限') == ['th', 'core', 'web', '路由', '权限']
 
@@ -68,12 +66,10 @@ def test_tokenize_query_strips_stopwords_and_punct():
     # 标点切分 + 停用词过滤
     tokens = tokenize_query('the, 路由；了 web！')
     assert tokens == ['路由', 'web']
-
 # endregion
 
 
 # region ======== 建表 ========
-
 def test_rejects_memory_path():
     with pytest.raises(ValueError, match=":memory:"):
         SqliteMemoryStore(':memory:')
@@ -85,12 +81,10 @@ def test_init_is_idempotent(store: SqliteMemoryStore):
     store.init_store()
     store.init_store()
     assert store.count() == 1
-
 # endregion
 
 
 # region ======== remember / get ========
-
 def test_remember_returns_id_and_get_roundtrip(store: SqliteMemoryStore):
     rid = store.remember(MemoryRecord(
         scope='app', category='decision', title='用 Hutool',
@@ -105,12 +99,10 @@ def test_remember_returns_id_and_get_roundtrip(store: SqliteMemoryStore):
 
 def test_get_missing_returns_none(store: SqliteMemoryStore):
     assert store.get(99999) is None
-
 # endregion
 
 
 # region ======== recall 计分与排序 ========
-
 def _seed(store: SqliteMemoryStore) -> None:
     store.remember(MemoryRecord(scope='app', category='decision', title='用 Hutool',
                                 content='字符串用 StrUtil', keywords='hutool,工具'))
@@ -160,12 +152,10 @@ def test_recall_limit(store: SqliteMemoryStore):
     for i in range(5):
         store.remember(MemoryRecord(scope='app', category='other', title=f't{i}', content='x'))
     assert len(store.recall('', scope='app', limit=3)) == 3
-
 # endregion
 
 
 # region ======== 去重查找 / update / forget / touch ========
-
 def test_find_by_scope_title(store: SqliteMemoryStore):
     store.remember(MemoryRecord(scope='app', category='other', title='T', content='c1'))
     dups = store.find_by_scope_title('app', 'T')
@@ -227,12 +217,10 @@ def test_manager_recall_auto_touches(mgr: MemoryManager, store: SqliteMemoryStor
     rows = mgr.recall('hutool', scope='app', touch=False)  # 第二次只读
     # 第一次 recall 应已 touch，use_count>=1
     assert rows[0]['use_count'] >= 1
-
 # endregion
 
 
 # region ======== 持久化（SqliteMemoryStore 的核心价值）======
-
 def test_persistence_across_instances(store_path: str):
     """新实例打开同一文件，应读到之前写入的数据——这才是「记忆」而非「内存」。"""
     s1 = SqliteMemoryStore(store_path)
@@ -247,12 +235,10 @@ def test_persistence_across_instances(store_path: str):
     assert rec is not None
     assert rec.title == '跨重启存活'
     assert s2.count() == 1
-
 # endregion
 
 
 # region ======== 所有权与角色隔离（owner / shared_mode）======
-
 def test_remember_stamps_owner_normal(store_path: str):
     """正常角色 remember 盖当前 owner 与 owner_group。"""
     s = SqliteMemoryStore(store_path, owner='kahle', owner_group='backend')
@@ -363,12 +349,10 @@ def test_no_identity_cannot_touch_others_personal(store_path: str):
     assert anon.get(a_own) is None                       # 个人数据不可见
     assert anon.update(a_own, {'content': 'x'}) is False  # 也改不了
     assert anon.forget(a_own) is False
-
 # endregion
 
 
 # region ======== machine / agent_name 盖章 ========
-
 def test_remember_stamps_machine_and_agent(store_path: str):
     """remember 自动盖 machine/agent_name 章（构造时绑定）。"""
     s = SqliteMemoryStore(store_path, owner='alice', machine='pc-a', agent_name='opencode')
@@ -412,12 +396,10 @@ def test_remember_strips_blank_machine(store_path: str):
     assert rec is not None
     assert rec.machine is None
     assert rec.agent_name is None
-
 # endregion
 
 
 # region ======== find_by_scope_title 去重三态（machine_bound）======
-
 def test_dedup_machine_bound_isolates_by_machine(store_path: str):
     """machine_bound=True：同 scope+title 跨 machine 不判重（路径类语义）。"""
     a = SqliteMemoryStore(store_path, owner='alice', machine='pc-a')
@@ -456,12 +438,10 @@ def test_dedup_machine_bound_falls_back_when_no_machine(store_path: str):
     a.remember(MemoryRecord(scope='app', category='file-path', title='T', content='x'))
     dups = a.find_by_scope_title('app', 'T', machine_bound=True)
     assert len(dups) == 1  # 退化：能查到自己刚记的
-
 # endregion
 
 
 # region ======== 老库迁移（_migrate 补列）======
-
 def test_migrate_adds_columns_to_legacy_table(store_path: str):
     """建一个老式（无 machine/agent_name 列）的表，init_store 应补齐列且不丢老数据。"""
     import sqlite3
@@ -506,5 +486,4 @@ def test_migrate_is_idempotent(store_path: str):
     cols = [r['name'] for r in s._query('PRAGMA table_info(ai_memory)')]
     assert cols.count('machine') == 1
     assert cols.count('agent_name') == 1
-
 # endregion

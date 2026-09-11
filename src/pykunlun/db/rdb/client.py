@@ -73,7 +73,6 @@ class RdbClient(ABC):
     """
 
     # region ======== 构造与配置校验 ========
-
     def __init__(self, cfg: RdbCfg) -> None:
         """
         Args:
@@ -220,11 +219,9 @@ class RdbClient(ABC):
             d = dict(zip(cols, row)) if cols else {f'field_{i}': v for i, v in enumerate(row)}
             result.append(_convert(d))
         return result
-
     # endregion
 
     # region ======== 驱动钩子与执行接口 ========
-
     #: 本实现类代表的数据库类型标识（如 ``mysql``、``postgresql``、``sqlite``）。
     #:
     #: 由各实现类以**类级常量**形式硬编码提供，标识"本类是哪种数据库的驱动"。
@@ -391,5 +388,4 @@ class RdbClient(ABC):
         持有连接池等长期资源的客户端子类应覆盖本方法，在关闭时归还或释放资源。
         """
         pass
-
     # endregion

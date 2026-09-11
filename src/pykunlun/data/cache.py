@@ -44,7 +44,6 @@ V = TypeVar('V')
 
 
 # region ======== 缓存抽象基类 ========
-
 class Cache(ABC, Generic[K, V]):
     """
     缓存抽象基类（泛型 ``Cache[K, V]``）。
@@ -194,12 +193,10 @@ class Cache(ABC, Generic[K, V]):
         远程存储实现可用各自手段（如 Redis 的 ``INCR`` 计数）填充同结构。
         """
         return {}
-
 # endregion
 
 
 # region ======== 内置实现：纯内存缓存 ========
-
 class MemoryCache(Cache[K, V]):
     """
     纯内存缓存实现（``OrderedDict`` + ``RLock``，线程安全）。
@@ -325,12 +322,10 @@ class MemoryCache(Cache[K, V]):
                 'expired': self._expired,
                 'size': len(self._store),
             }
-
 # endregion
 
 
 # region ======== 命名缓存注册表 ========
-
 class CacheManager:
     """
     命名缓存注册表：按名登记 :class:`Cache` 实例，集中取用与统一清空。
@@ -415,5 +410,4 @@ class CacheManager:
             caches = list(self._caches.values())
         for c in caches:
             c.clear()
-
 # endregion

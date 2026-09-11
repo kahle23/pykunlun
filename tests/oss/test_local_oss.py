@@ -12,7 +12,8 @@ pykunlun.oss 对象存储能力的单元测试。
   - 流式钩子契约：``_get`` 出流由调用方关闭、缺失键同步抛、``_put`` 不关入流、
     大文件分块转写
   - 目录安全：``..`` 逃逸拒绝、bucket 子目录映射、file:// URL
-  - :class:`OssManager`：类注册/工厂化创建/别名隔离/未注册报错
+  - :class:`OssManager`：类注册/工厂化创建/别名隔离/未注册报错、
+    实例分支运行时校验、replace=False 拒绝覆盖
 """
 
 import io
@@ -31,8 +32,8 @@ from pykunlun.oss import (
     OssManager,
 )
 
-# region ======== fixture ========
 
+# region ======== fixture ========
 @pytest.fixture
 def root_dir(tmp_path: Path) -> Iterator[str]:
     """提供一个临时存储根目录路径，测试结束自动清理。"""
@@ -45,12 +46,10 @@ def root_dir(tmp_path: Path) -> Iterator[str]:
 def client(root_dir: str) -> LocalOssClient:
     """默认客户端：默认桶 oss、无前缀。"""
     return LocalOssClient(OssCfg(oss_type='local', bucket='oss', storage_options={'base_dir': root_dir}))
-
 # endregion
 
 
 # region ======== 键处理（规范化经 pathutil，规则详见 tests/util/test_pathutil.py） ========
-
 class TestKeyHandling:
     """测试键经 pathutil 规范化后在本门面的端到端行为。"""
 
@@ -88,12 +87,10 @@ class TestKeyHandling:
         # 绝对路径下 .. 到根即止（POSIX: /.. == /），不会逃逸，落在根内
         client.put_object('/../evil.txt', b'x')
         assert client.get_object_text('evil.txt') == 'x'
-
 # endregion
 
 
 # region ======== 键预处理钩子 ========
-
 class TestKeyPrepareHook:
     """测试 _prepare_key 键预处理钩子（模板方法：默认实现 + 可覆写）。"""
 
@@ -119,12 +116,10 @@ class TestKeyPrepareHook:
         assert client.list_keys() == ['dir/file.txt']
         client.delete_object('Dir/File.TXT')
         assert client.list_keys() == []
-
 # endregion
 
 
 # region ======== LocalOssClient 基础读写 ========
-
 class TestPutAndGet:
     """测试 put/get 基础读写。"""
 
@@ -159,12 +154,10 @@ class TestPutAndGet:
         """反斜杠键与正斜杠键等价。"""
         client.put_object('x\\y.txt', 'ok')
         assert client.exists('x/y.txt')
-
 # endregion
 
 
 # region ======== 文件级操作 ========
-
 class TestFileOps:
     """测试 upload/download 文件级操作。"""
 
@@ -181,12 +174,10 @@ class TestFileOps:
     def test_download_missing_raises(self, client: LocalOssClient, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
             client.download_file('nope', str(tmp_path / 'out.bin'))
-
 # endregion
 
 
 # region ======== 流式底层钩子契约 ========
-
 class _CloseTrackingStream(io.RawIOBase):
     """最小包装流：透传读取，close 时回调记录（用于验证调用方关闭纪律）。"""
 
@@ -272,12 +263,10 @@ class TestStreamHooks:
         with pytest.raises(FileNotFoundError):
             client.download_file('nope', dst)
         assert not os.path.exists(os.path.dirname(dst))
-
 # endregion
 
 
 # region ======== 探测与列举 ========
-
 class TestListAndStat:
     """测试 exists/stat/list_objects/list_keys。"""
 
@@ -319,12 +308,10 @@ class TestListAndStat:
 
     def test_list_empty_root(self, client: LocalOssClient) -> None:
         assert client.list_keys() == []
-
 # endregion
 
 
 # region ======== 复制/移动/删除 ========
-
 class TestCopyMoveDelete:
     """测试 copy/move/delete。"""
 
@@ -349,12 +336,10 @@ class TestCopyMoveDelete:
         client.delete_object('gone.txt')
         assert not client.exists('gone.txt')
         client.delete_object('gone.txt')  # 再删一次不抛异常
-
 # endregion
 
 
 # region ======== 前缀隔离 ========
-
 class TestPrefix:
     """测试 cfg.prefix 全局前缀对调用方透明。"""
 
@@ -373,12 +358,10 @@ class TestPrefix:
         c2 = LocalOssClient(OssCfg(oss_type='local', bucket='oss', storage_options={'base_dir': root_dir}, prefix='x'))
         c1.put_object('k', '1')
         assert c2.exists('k')
-
 # endregion
 
 
 # region ======== 只读配置 ========
-
 class TestReadOnly:
     """测试 read_only 配置写拦截。"""
 
@@ -415,12 +398,10 @@ class TestReadOnly:
         assert ro_client.get_object_text('pre.txt') == 'read me'
         assert ro_client.list_keys() == ['pre.txt']
         assert ro_client.exists('pre.txt')
-
 # endregion
 
 
 # region ======== bucket 映射与目录安全 ========
-
 class TestBucketAndSafety:
     """测试 bucket 子目录映射与目录穿越防护。"""
 
@@ -460,12 +441,10 @@ class TestBucketAndSafety:
     def test_oss_type_mismatch_rejected(self) -> None:
         with pytest.raises(ValueError, match='oss_type'):
             LocalOssClient(OssCfg(oss_type='aliyun', storage_options={'base_dir': '/tmp/x'}))
-
 # endregion
 
 
 # region ======== 桶入参语义（调用传桶 > cfg 默认桶 > 报错） ========
-
 class TestBucketArg:
     """测试 bucket 入参的三级解析：入参优先、cfg 默认桶回退、皆缺报错。"""
 
@@ -566,12 +545,10 @@ class TestBucketArg:
         blank = LocalOssClient(OssCfg(oss_type='local', storage_options={'base_dir': root_dir}))
         with pytest.raises(ValueError, match='bucket'):
             blank.put_object('k.txt', 'v', bucket='  ')
-
 # endregion
 
 
 # region ======== 元数据（旁车 .meta.json） ========
-
 class TestMetadata:
     """测试 content_type / metadata 的旁车承载与读回。"""
 
@@ -712,33 +689,31 @@ class TestMetadata:
             assert st.content_type is None
             assert st.metadata is None
             assert client.get_object_text('m/bad.txt') == 'v'
-
 # endregion
 
 
 # region ======== OssManager ========
-
 class TestOssManager:
     """测试管理器注册表与便捷转发。"""
 
     def test_register_class_and_cfg_factory(self, root_dir: str) -> None:
         mgr = OssManager()
         mgr.register_client_class(LocalOssClient)
-        mgr.register('dev', OssCfg(oss_type='local', bucket='oss', storage_options={'base_dir': root_dir}))
+        mgr.register_client('dev', OssCfg(oss_type='local', bucket='oss', storage_options={'base_dir': root_dir}))
         assert isinstance(mgr.get_client('dev'), LocalOssClient)
         assert mgr.get_registered_client_types() == ['local']
 
     def test_register_instance_directly(self, client: LocalOssClient) -> None:
         mgr = OssManager()
-        mgr.register('default', client)
+        mgr.register_client('default', client)
         mgr.put_object('via-mgr.txt', 'hello')
         assert mgr.get_object_text('via-mgr.txt') == 'hello'
 
     def test_named_instances_isolated(self, root_dir: str, client: LocalOssClient) -> None:
         mgr = OssManager()
-        mgr.register('default', client)
+        mgr.register_client('default', client)
         other = LocalOssClient(OssCfg(oss_type='local', storage_options={'base_dir': root_dir}, bucket='other'))
-        mgr.register('other', other)
+        mgr.register_client('other', other)
         mgr.put_object('k', 'd1')
         mgr.put_object('k', 'd2', name='other')
         assert mgr.get_object_text('k') == 'd1'
@@ -749,7 +724,7 @@ class TestOssManager:
         mgr = OssManager()
         mgr.register_client_class(LocalOssClient)
         with pytest.raises(ValueError, match='oss_type'):
-            mgr.register('x', OssCfg(oss_type='s3', storage_options={'base_dir': '/tmp'}))
+            mgr.register_client('x', OssCfg(oss_type='s3', storage_options={'base_dir': '/tmp'}))
 
     def test_unknown_name_rejected(self) -> None:
         mgr = OssManager()
@@ -761,11 +736,28 @@ class TestOssManager:
         with pytest.raises(TypeError):
             mgr.register_client_class(object)  # type: ignore[arg-type]
 
+    def test_register_non_client_instance_rejected(self) -> None:
+        """实例分支运行时校验：非 OssClient/OssCfg 在注册现场即抛 TypeError。"""
+        mgr = OssManager()
+        with pytest.raises(TypeError, match='OssClient 实例'):
+            mgr.register_client('bad', 'not-a-client')  # type: ignore[arg-type]
+        assert mgr.get_registered_names() == []
+
+    def test_register_replace_false(self, root_dir: str) -> None:
+        """replace=False 时同名重复注册抛 ValueError 且保留旧实例。"""
+        mgr = OssManager()
+        mgr.register_client_class(LocalOssClient)
+        mgr.register_client('a', OssCfg(oss_type='local', bucket='oss', storage_options={'base_dir': root_dir}))
+        with pytest.raises(ValueError, match='replace=False'):
+            mgr.register_client('a', OssCfg(oss_type='local', bucket='other',
+                                    storage_options={'base_dir': root_dir}), replace=False)
+        assert mgr.get_client('a').cfg.bucket == 'oss'
+
     def test_full_lifecycle_via_manager(self, root_dir: str) -> None:
         """经管理器走一遍完整生命周期。"""
         mgr = OssManager()
         mgr.register_client_class(LocalOssClient)
-        mgr.register('default', OssCfg(oss_type='local', bucket='oss', storage_options={'base_dir': root_dir}))
+        mgr.register_client('default', OssCfg(oss_type='local', bucket='oss', storage_options={'base_dir': root_dir}))
         mgr.put_object('lifecycle/a.txt', 'v1')
         mgr.copy_object('lifecycle/a.txt', 'lifecycle/b.txt')
         mgr.move_object('lifecycle/b.txt', 'lifecycle/c.txt')
@@ -779,11 +771,10 @@ class TestOssManager:
         """管理器便捷方法透传 bucket：缺省走默认桶，显式传走指定桶。"""
         mgr = OssManager()
         mgr.register_client_class(LocalOssClient)
-        mgr.register('default', OssCfg(oss_type='local', bucket='oss', storage_options={'base_dir': root_dir}))
+        mgr.register_client('default', OssCfg(oss_type='local', bucket='oss', storage_options={'base_dir': root_dir}))
         mgr.put_object('k.txt', 'default', bucket='oss')
         mgr.put_object('k.txt', 'explicit', bucket='tmp')
         assert mgr.get_object_text('k.txt') == 'default'
         assert mgr.get_object_text('k.txt', bucket='tmp') == 'explicit'
         assert mgr.list_keys(bucket='tmp') == ['k.txt']
-
 # endregion

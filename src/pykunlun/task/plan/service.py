@@ -41,7 +41,6 @@ class PlanTaskService(ABC):
         初始化服务（幂等）：SQL 后端建五张任务表，HTTP 后端探活/握手。
         首次使用前调用。
         """
-
     # endregion
 
     # region ======== 任务 ========
@@ -128,7 +127,6 @@ class PlanTaskService(ABC):
         Returns:
             是否命中（已终态返回 False）。
         """
-
     # endregion
 
     # region ======== 步骤 ========
@@ -209,7 +207,6 @@ class PlanTaskService(ABC):
         Returns:
             是否命中（步骤状态不在允许范围返回 False）。
         """
-
     # endregion
 
     # region ======== 执行 ========
@@ -323,7 +320,6 @@ class PlanTaskService(ABC):
         Returns:
             ``'released'``（已释放）或 ``''``（run 不存在或非 running，未流转）。
         """
-
     # endregion
 
     # region ======== 恢复 ========
@@ -381,7 +377,6 @@ class PlanTaskService(ABC):
             ``kind`` ∈ ``step/run/task``，``level`` ∈ info/warn/error，
             ``fixed`` 仅 fix=True 且该发现已修复时为 True。
         """
-
     # endregion
 
     # region ======== 产物 / 事件 ========
@@ -438,5 +433,4 @@ class PlanTaskService(ABC):
         """
         按任务查事件流水（按 id 倒序取最近 limit 条），返回行字典列表。
         """
-
     # endregion
