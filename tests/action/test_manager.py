@@ -14,6 +14,7 @@ from pykunlun.action import ActionManager
 def test_register_and_get():
     # 首次注册返回 None；get_action/has_action 可查到
     mgr = ActionManager()
+
     def ping() -> str:
         return 'pong'
     assert mgr.register('ip.query', ping) is None
@@ -25,8 +26,10 @@ def test_register_and_get():
 def test_register_overwrite_returns_old():
     # 覆盖同名注册返回被覆盖的旧动作（支持包装增强后回注册）
     mgr = ActionManager()
+
     def v1() -> int:
         return 1
+
     def v2() -> int:
         return 2
     assert mgr.register('ip.query', v1) is None
@@ -37,6 +40,7 @@ def test_register_overwrite_returns_old():
 def test_register_strips_name():
     # 名称前后空格被去除
     mgr = ActionManager()
+
     def f() -> None:
         pass
     mgr.register('  ip.query  ', f)
@@ -45,6 +49,7 @@ def test_register_strips_name():
 
 def test_unregister():
     mgr = ActionManager()
+
     def f() -> None:
         pass
     mgr.register('ip.query', f)
@@ -76,6 +81,7 @@ def test_clear_returns_count():
 def test_execute_passthrough_args_and_kwargs():
     # 位置参数与关键字参数透传给动作本体
     mgr = ActionManager()
+
     def add(a: int, b: int, *, offset: int = 0) -> int:
         return a + b + offset
     mgr.register('math.add', add)
@@ -91,6 +97,7 @@ def test_execute_missing_raises_keyerror():
 def test_empty_name_raises_valueerror():
     # None / 空串 / 纯空白均为非法名称
     mgr = ActionManager()
+
     def f() -> None:
         pass
     for bad in (None, '', '   '):
@@ -111,6 +118,7 @@ def test_non_callable_raises_typeerror():
 def test_instances_isolated():
     # 管理器可多实例，动作表互不串扰
     m1, m2 = ActionManager(), ActionManager()
+
     def f() -> int:
         return 1
     m1.register('ip.query', f)

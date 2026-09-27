@@ -594,9 +594,13 @@ class SqlitePlanTaskService(PlanTaskService):
             if not rows:
                 log.warning("skip 未找到步骤 id=%s", id)
                 return False
+            # reason 落 result_summary（[已跳过] 前缀）：skip 不走 finish，这是跳过
+            # 原因进入后续 claim context 链的唯一通道（pending 态摘要必为 NULL，覆盖安全）
+            summary = f"[已跳过] {reason}" if reason else "[已跳过]"
             affected = conn.execute(
-                f"UPDATE {t_step} SET status = ?, finished_at = ?, updated_at = ? WHERE id = ? AND status = ?",
-                ("skipped", now, now, id, "pending"),
+                f"UPDATE {t_step} SET status = ?, result_summary = ?, finished_at = ?, updated_at = ? "
+                f"WHERE id = ? AND status = ?",
+                ("skipped", summary, now, now, id, "pending"),
             ).rowcount
             if not affected:
                 log.warning("步骤 id=%s 非 pending（%s），不可 skip", id, rows[0]["status"])
@@ -637,7 +641,8 @@ class SqlitePlanTaskService(PlanTaskService):
                     "（force 可加 succeeded）" if not force else "",
                 )
                 return False
-            clear_summary = force and step["status"] == "succeeded"
+            # skipped 复活同分支清 [已跳过] 摘要与 finished_at，防跳过标记残留
+            clear_summary = (force and step["status"] == "succeeded") or step["status"] == "skipped"
             sets = (
                 "status = ?, max_retries = max_retries + 1, updated_at = ?"
                 if not clear_summary
@@ -724,11 +729,13 @@ class SqlitePlanTaskService(PlanTaskService):
                     self._event(conn, task_id, "state_change", "task: pending → running (first claim)")
                 else:
                     self._touch_heartbeat(conn, task_id)
-                # 续跑上下文包：任务 + 步骤 + run_id + 前序成功步骤摘要
+                # 续跑上下文包：任务 + 步骤 + run_id + 前序步骤摘要
+                # （succeeded=结果摘要；skipped=[已跳过] 原因，与依赖判定口径一致）
                 ctx = self._q(
                     conn,
-                    f"SELECT seq, name, result_summary FROM {t_step} WHERE task_id = ? AND status = ? ORDER BY seq",
-                    (task_id, "succeeded"),
+                    f"SELECT seq, name, result_summary FROM {t_step} "
+                    f"WHERE task_id = ? AND status IN (?,?) ORDER BY seq",
+                    (task_id, "succeeded", "skipped"),
                 )
                 trow = self._task_row(self._q(conn, f"SELECT * FROM {t_task} WHERE id = ?", (task_id,))[0])
                 srow = self._q(conn, f"SELECT * FROM {t_step} WHERE id = ?", (cand["id"],))[0]

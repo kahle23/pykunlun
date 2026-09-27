@@ -74,6 +74,7 @@ class DemoManager(RegistryManager[DemoClient, DemoCfg]):
     get_registered_names = RegistryManager[DemoClient, DemoCfg].get_registered_names
 # endregion
 
+
 # region ======== 类注册表 ========
 class TestClassRegistry:
     """
@@ -150,6 +151,7 @@ class TestClassRegistry:
             manager.register_client_class(FastDemoClient, replace=False)
         assert manager.get_registered_client_types() == ['fast']
 # endregion
+
 
 # region ======== 实例注册表 ========
 class TestInstanceRegistry:
@@ -291,6 +293,7 @@ class TestInstanceRegistry:
         assert DemoManager(config_loader=loader).get_config_loader() is loader
 # endregion
 
+
 # region ======== 模板方法与钩子 ========
 class TestTemplateAndHook:
     """
@@ -322,6 +325,7 @@ class TestTemplateAndHook:
         item = FastDemoClient(DemoCfg(kind='fast'))
         assert manager._wrap_item(item) is item
 # endregion
+
 
 # region ======== 派生校验与并发 ========
 class TestSubclassValidation:

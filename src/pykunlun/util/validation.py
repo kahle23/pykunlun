@@ -37,7 +37,7 @@ def check_dataclass_required_fields(data: dict[str, Any], data_class: type[T],
     if required_fields is not None:
         required = set(required_fields)
     else:
-        required = {f.name for f in fields(data_class) if f.default is MISSING} # type: ignore[arg-type]
+        required = {f.name for f in fields(data_class) if f.default is MISSING}  # type: ignore[arg-type]
     # 检查字段是否存在
     missing = required - data.keys()
     if missing:

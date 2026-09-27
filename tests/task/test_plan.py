@@ -401,6 +401,45 @@ def test_skip_pending_step(store: SqlitePlanTaskService):
     assert p2 is None
 
 
+def test_skip_reason_enters_next_claim_context(store: SqlitePlanTaskService):
+    """skip 的 --reason 落 result_summary（[已跳过] 前缀），进入后续 claim 的 context 链。"""
+    tid = _mk_task(store)
+    sids = _mk_steps(store, tid, names=('one', 'two', 'three'))
+    p = store.claim_next_step(tid)
+    assert p is not None
+    store.finish_run(p['run_id'], output='ok', summary='一完成')
+    assert store.skip_step(sids[1], reason='产物已在 /data/x.xlsx') is True
+    p2 = store.claim_next_step(tid)
+    assert p2 is not None
+    assert p2['step']['name'] == 'three'
+    assert p2['context'] == [
+        {'seq': 1, 'name': 'one', 'result_summary': '一完成'},
+        {'seq': 2, 'name': 'two', 'result_summary': '[已跳过] 产物已在 /data/x.xlsx'},
+    ]
+
+
+def test_skip_without_reason_writes_bare_marker(store: SqlitePlanTaskService):
+    """不带 --reason 的 skip 也写 [已跳过] 标记，下游仍可从 context 得知该步被跳过。"""
+    tid = _mk_task(store)
+    sids = _mk_steps(store, tid, names=('one', 'two'))
+    assert store.skip_step(sids[0]) is True
+    p = store.claim_next_step(tid)
+    assert p is not None
+    assert p['context'] == [{'seq': 1, 'name': 'one', 'result_summary': '[已跳过]'}]
+
+
+def test_retry_skipped_step_clears_skip_marker(store: SqlitePlanTaskService):
+    """skipped 步骤复活时清空 [已跳过] 摘要与 finished_at，防跳过标记残留。"""
+    tid = _mk_task(store)
+    sids = _mk_steps(store, tid, names=('one',))
+    assert store.skip_step(sids[0], reason='先跳过') is True
+    assert _step(store, sids[0]).result_summary == '[已跳过] 先跳过'
+    assert store.retry_step(sids[0]) is True
+    step = _step(store, sids[0])
+    assert step.status == 'pending'
+    assert step.result_summary is None and step.finished_at is None
+
+
 def test_skip_non_pending_fails(store: SqlitePlanTaskService):
     tid = _mk_task(store)
     sids = _mk_steps(store, tid, names=('one',))

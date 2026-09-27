@@ -261,7 +261,7 @@ class LocalOssClient(OssClient):
 
     def _list(self, bucket: str, prefix: str, delimiter: str | None) -> list[ObjectStat]:
         # 目录层列举是本地文件系统没有的存储层概念：delimiter 仅记日志即忽略
-        #（提示放在本实现而非基类，避免支持 delimiter 的云端实现被误报）
+        # （提示放在本实现而非基类，避免支持 delimiter 的云端实现被误报）
         if delimiter:
             log.debug("_list 带 delimiter=%r：本地实现不支持目录层列举，按前缀扁平列举", delimiter)
         base = self._bucket_dir(bucket)

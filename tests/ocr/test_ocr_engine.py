@@ -56,6 +56,7 @@ class TestOcrEngineEngineType:
             eng.cfg = OcrCfg()
 # endregion
 
+
 # region ======== OcrManager：类注册表 + 工厂 + 实例别名 ========
 class TestOcrManager:
     def test_register_engine_class_and_lookup(self):

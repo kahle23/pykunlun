@@ -183,7 +183,8 @@ class PlanTaskService(ABC):
 
         Args:
             id: 步骤 id。
-            reason: 跳过原因（记入事件）。
+            reason: 跳过原因——记入事件，并以 ``[已跳过] <reason>`` 写入步骤
+                ``result_summary``，随下一次 claim 进入后续步骤的 context 链。
 
         Returns:
             是否命中（非 pending 返回 False）。
@@ -196,6 +197,7 @@ class PlanTaskService(ABC):
 
         语义："再给一次机会"——``max_retries + 1`` 后回 pending；若所属任务已因
         该步骤失败（failed），任务一并复活为 running（刷心跳），等下次 claim 继续。
+        skipped 步骤复活时同步清空 ``result_summary``（[已跳过] 标记）与 finished_at。
 
         Args:
             id: 步骤 id。
@@ -242,7 +244,9 @@ class PlanTaskService(ABC):
                   "task":    {任务全部字段},
                   "step":    {步骤全部字段},
                   "run_id":  本次执行的 run id,
-                  "context": [{"seq", "name", "result_summary"}, ...]  # 前序成功步骤摘要
+                  "context": [{"seq", "name", "result_summary"}, ...]
+                  # 前序 succeeded/skipped 步骤摘要（skipped 的 result_summary
+                  # 为 "[已跳过] <reason>"，跳过原因借此传递给下游）
                 }
 
             任务无可认领步骤（或任务非 pending/running 状态）返回 None，
