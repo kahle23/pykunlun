@@ -18,7 +18,7 @@ polylines / putText 也只接收 ndarray）。本模块不在顶部导入它们�
 
 import os
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, ClassVar, Union
+from typing import TYPE_CHECKING, Any, ClassVar, Union, cast
 
 from pykunlun.util import logutil
 
@@ -226,7 +226,10 @@ class OcrEngine(ABC):
             return img
 
         if isinstance(image, np.ndarray):
-            return image.copy()
+            # isinstance 收窄到未参数化的裸 ndarray，copy() 存根返回值 Self 解不出类型参数：
+            # pyright strict 判未知返回值、mypy 解为 Any 触发 no-any-return。
+            # cast 钉住返回契约（保持原图 shape/dtype 的副本），并忽略该行的存根级误报。
+            return cast('npt.NDArray[Any]', image.copy())  # pyright: ignore[reportUnknownMemberType]
 
         raise TypeError(
             f"image 必须是图片路径(str)或 numpy 数组，实际类型: {type(image)}"
@@ -326,7 +329,9 @@ class OcrEngine(ABC):
         img = self._load_image(image)
         line_thickness = 1 if thickness is None else thickness
         for item in self._filter_results(self._recognize_array(img)):
-            pts = np.array(item.bbox, np.int32).reshape((-1, 1, 2))
+            # reshape 的存根重载表含 Self 返回分支（numpy 存根自身即注释 checker false positive），
+            # pyright strict 判成员部分未知，忽略该行存根级误报。
+            pts = np.array(item.bbox, np.int32).reshape((-1, 1, 2))  # pyright: ignore[reportUnknownMemberType]
             cv2.polylines(
                 img, [pts], isClosed=True, color=color, thickness=line_thickness
             )

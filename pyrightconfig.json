@@ -1,6 +1,13 @@
 {
   "typeCheckingMode": "strict",
   "reportUnnecessaryIsInstance": "none",
+  // 与 pyproject 的 [tool.mypy] python_version 对齐（requires-python >= 3.10）；
+  // 不显式配置时 pyright 会跟随本机解释器版本，不同机器检查结果不一致。
+  "pythonVersion": "3.10",
+  // numpy / cv2 / rapidocr 是 rapidocr extra 的可选传递依赖，
+  // pyright 没有类似 mypy overrides 的缺包放行机制，需要真实包才能解析类型
+  // （否则报缺失导入 + Unknown 级联）。开发/检查环境统一经 pip install -e ".[dev]" 装齐，
+  // 详见 pyproject.toml 的 [project.optional-dependencies]。
   "executionEnvironments": [
     {
       // 测试属白盒场景，访问被测模块私有成员（_query、_format_help_hint 等）是有意为之，
